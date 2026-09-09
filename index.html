@@ -742,7 +742,7 @@ class Component extends DCLogic {
     this.P = await this.waitForPhysics();
     if (this.P && this.P.syncMyKits) { try { this.P.syncMyKits(); } catch (e) {} }
     if (this.P && this.P.loadStock) { try { this.setState({ stock: this.P.loadStock() }); } catch (e) {} }
-    if (this.P && this.P.loadFleet) { try { this.setState({ fleet: this.P.loadFleet() }); } catch (e) {} }
+    if (this.P && this.P.loadFleet) { try { this.setState({ fleet: this.P.loadFleet() || [] }); } catch (e) {} }
     this.restorePad();
     let saved = [];
     try { saved = JSON.parse(localStorage.getItem(this.LOGKEY) || '[]'); } catch (e) {}
@@ -758,7 +758,12 @@ class Component extends DCLogic {
 
   /* on a real phone, drop the bezel + side notes and fill the screen */
   syncViewport() {
-    const phone = window.innerWidth < 820;
+    /* Width alone is not enough: with Request Desktop Website switched on, an
+       iPhone reports about 980px and lands in the desktop frame, which then sits
+       off the edge of the screen. A coarse pointer or a touch screen means phone,
+       whatever the reported width says. */
+    const coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+    const phone = window.innerWidth < 820 || coarse;
     if (phone !== this.state.phone) {
       this.setState({ phone }, () => [60, 320].forEach(ms => setTimeout(() => this.resize(), ms)));
     } else {
@@ -768,8 +773,9 @@ class Component extends DCLogic {
 
   /* module first; the global is the fallback when this runs from a single bundled file */
   async waitForPhysics() {
+    const BUILD = '9';   /* bump when physics.js changes */
     try {
-      const m = await import('./physics.js');
+      const m = await import('./physics.js?v=' + BUILD);
       if (m && m.KITS) return m;
     } catch (e) {}
     return new Promise(res => {
@@ -1383,6 +1389,7 @@ class Component extends DCLogic {
 
   /* ---------- what you own ---------- */
   toggleFleet(kit) {
+    if (!this.P || !this.P.toggleFleet) return;
     this.setState({ fleet: this.P.toggleFleet(kit) });
   }
 
@@ -1623,7 +1630,7 @@ class Component extends DCLogic {
       });
     });
 
-    const owned = k => P && st.fleet.indexOf(P.kitKey(k)) >= 0;
+    const owned = k => !!(P && P.kitKey && st.fleet && st.fleet.indexOf(P.kitKey(k)) >= 0);
     const kitCard = (k, i) => ({
       name: k.n, note: k.note,
       owned: owned(k) ? 'IN MY FLEET \u2713' : '+ ADD TO MY FLEET',
@@ -1727,7 +1734,7 @@ class Component extends DCLogic {
       bezelBg: ph ? 'none' : 'linear-gradient(#3A332A, #211D18)',
       bezelShadow: ph ? 'none' : '0 28px 60px -18px #000c, 0 0 0 1px #ffffff14 inset',
       screenW: ph ? '100%' : '392px',
-      screenH: ph ? '100dvh' : '812px',
+      screenH: ph ? '100dvh' : 'min(812px, calc(100dvh - 40px))',
       screenRadius: ph ? '0' : '36px',
       showChrome: ph ? 'none' : 'flex',
       showNotes: ph ? 'none' : 'block',
@@ -1777,8 +1784,8 @@ class Component extends DCLogic {
         (kit.rec === 'streamer' ? 'streamer' : kit.chute + ' in chute') : '',
       /* ---- engines page ---- */
       showEngines: st.tab === 'engines' ? 'block' : 'none',
-      stockCount: String(P ? P.stockSummary().count : 0),
-      stockImpulse: P ? P.stockSummary().impulse.toFixed(0) + ' N\u00B7s' : '—',
+      stockCount: String(P && P.stockSummary ? P.stockSummary().count : 0),
+      stockImpulse: P && P.stockSummary ? P.stockSummary().impulse.toFixed(0) + ' N\u00B7s' : '\u2014',
       engGroups: P && st.tab === 'engines' ? [13, 18, 24, 29].map(mm => ({
         head: mm + ' MM',
         sub: P.MOTORS.filter(m => m.mm === mm).length + ' engines',
@@ -2066,6 +2073,7 @@ class Component extends DCLogic {
         const lo = pr[0], hi = pr[pr.length - 1];
         const veer = Math.round(((hi.dir - lo.dir + 540) % 360) - 180);
         const apoM = res && nom ? nom.apogee : 0;
+        if (!P.windAtHeight) return '';
         const atApo = P.windAtHeight(pr, apoM, 0.16);
         return 'Dark bars are inside your flight. At apogee the wind is ' +
           (this.us() ? (atApo.spd * 2.23694).toFixed(0) + ' mph' : atApo.spd.toFixed(1) + ' m/s') +
@@ -2102,6 +2110,51 @@ class Component extends DCLogic {
   }
 }
 
+</script>
+<script>
+/* If the app has not painted after a few seconds, say so and offer a way out.
+   A black screen with no recourse is the worst possible failure in a field. */
+(function () {
+  var faults = [];
+  window.addEventListener('error', function (e) {
+    faults.push((e.message || 'script error') + (e.filename ? ' — ' + e.filename.split('/').pop() : ''));
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    faults.push('promise: ' + ((e.reason && e.reason.message) || e.reason));
+  });
+  setTimeout(function () {
+    var root = document.getElementById('dc-root');
+    if (root && root.textContent.replace(/\s+/g, '').length > 40) return;
+    var why = faults.length ? faults[0]
+      : 'Nothing loaded. Usually that means one of the app files is missing or a stale copy is cached.';
+    var box = document.createElement('div');
+    box.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#221F1A;color:#F6F0E1;' +
+      'padding:28px 22px;font:400 15px/1.5 system-ui,sans-serif;overflow:auto;';
+    box.innerHTML =
+      '<div style="font:700 22px/1.1 system-ui,sans-serif;letter-spacing:.02em;">Recovery Plot did not start</div>' +
+      '<p style="opacity:.85;margin:14px 0 6px;">' + String(why).replace(/[<>]/g, '') + '</p>' +
+      '<p style="opacity:.6;font-size:13px;margin:0 0 22px;">Reloading past the cache fixes most of it. ' +
+      'Clearing app data is the bigger hammer: it forgets your pad, fleet, engine counts and log.</p>';
+    function btn(label, bg, fg, fn) {
+      var b = document.createElement('button');
+      b.textContent = label;
+      b.style.cssText = 'display:block;width:100%;margin-bottom:10px;padding:15px;border:1px solid #F6F0E1;' +
+        'background:' + bg + ';color:' + fg + ';font:700 13px/1 system-ui,sans-serif;letter-spacing:.14em;cursor:pointer;';
+      b.onclick = fn;
+      box.appendChild(b);
+    }
+    btn('RELOAD PAST THE CACHE', '#C8442F', '#F6F0E1', function () {
+      location.replace(location.pathname + '?cb=' + Date.now() + location.hash);
+    });
+    btn('CLEAR APP DATA AND RELOAD', 'transparent', '#F6F0E1', function () {
+      try {
+        Object.keys(localStorage).forEach(function (k) { if (k.indexOf('rp.') === 0) localStorage.removeItem(k); });
+      } catch (e) {}
+      location.replace(location.pathname + '?cb=' + Date.now());
+    });
+    document.body.appendChild(box);
+  }, 6000);
+})();
 </script>
 </body>
 </html>
