@@ -3,16 +3,28 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="./support.js"></script>
-</head>
-<body>
-<x-dc>
-<helmet>
+
+<!-- Third-party CSS/JS lives in the real <head>, NOT in <helmet>. Anything left
+     inside <helmet> is executed twice: once by the HTML parser as the page is
+     read, and again when the runtime copies helmet into <head> on first render.
+     Two copies of Leaflet means window.L is swapped out from under a live map. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Saira+Stencil+One&family=Saira+Condensed:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" crossorigin="anonymous"></script>
+
+<!-- Tells the runtime this page is already self-contained, which stops it
+     re-fetching index.html after boot and hot-swapping the template underneath
+     a component that has already mounted a map. -->
+<script>window.__resources = {};</script>
+
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<!-- fonts + Leaflet moved to the document <head> so they load exactly once -->
 <style>
   html, body { margin: 0; background: #1B1815; }
   /* the app owns the viewport — only its inner panes scroll, so there is no
@@ -1105,7 +1117,7 @@ class Component extends DCLogic {
   repad() {
     this.savePadState();
     if (!this.map) return;
-    const L = window.L, pad = this.state.pad;
+    const L = this.L || window.L, pad = this.state.pad;
     this.layers.rings.clearLayers();
     this.layers.marks.clearLayers();
     L.circleMarker(pad, { radius: 5, color: '#16303F', weight: 3, fillColor: '#F6F0E1', fillOpacity: 1 })
@@ -1216,12 +1228,18 @@ class Component extends DCLogic {
 
   /* ---------- map ---------- */
   initMap(tries = 0) {
+    if (this.map) return;                      /* only ever one map */
     const el = document.getElementById('rp-map');
     if (!window.L || !el) {
       if (tries < 60) setTimeout(() => this.initMap(tries + 1), 100);
       return;
     }
-    const L = window.L;
+    /* Pin the Leaflet we build with. Every later call uses this.L, so a second
+       copy of Leaflet arriving afterwards cannot mix its classes into our map. */
+    const L = this.L = window.L;
+    /* If a previous attempt left the container stamped, Leaflet refuses to
+       reuse it ("Map container is already initialized") — reset it first. */
+    if (el._leaflet_id) { try { el._leaflet_id = null; el.innerHTML = ''; } catch (e) {} }
     this.map = L.map(el, { zoomControl: false, attributionControl: false, maxZoom: 20 }).setView(this.state.pad, 16);
     this.map.on('click', e => {
       if (!this.state.moveMode) return;
@@ -1262,7 +1280,7 @@ class Component extends DCLogic {
 
   /* walk the host list until one actually serves tiles */
   tryNextSat() {
-    const L = window.L;
+    const L = this.L || window.L;
     if (this.sat) { this.map.removeLayer(this.sat); this.sat = null; }
     this.satIdx = (this.satIdx == null ? -1 : this.satIdx) + 1;
     if (this.satIdx >= this.SAT_SOURCES.length) {
@@ -1300,7 +1318,7 @@ class Component extends DCLogic {
 
   drawPlot() {
     if (!this.map || !this.state.res) return;
-    const L = window.L, P = this.P, r = this.state.res;
+    const L = this.L || window.L, P = this.P, r = this.state.res;
     const [lat, lon] = this.state.pad;
     const { path, cloud, marks } = this.layers;
     path.clearLayers(); cloud.clearLayers();
@@ -2125,8 +2143,22 @@ class Component extends DCLogic {
       deadRes.push((t.src || t.href || '').split('/').slice(-1)[0] + ' failed to load');
       return;
     }
-    faults.push((e.message || 'script error') + (e.filename ? ' — ' + e.filename.split('/').pop() : ''));
+    var detail = e.error && (e.error.stack || e.error.message);
+    faults.push((detail || e.message || 'script error') +
+      (e.filename ? ' — ' + e.filename.split('/').pop() + ':' + (e.lineno || '?') : ''));
   }, true);
+  /* "Script error." means a cross-origin script hid the message from onerror.
+     console.error usually still has the real text, so keep a copy. */
+  var realError = console.error;
+  console.error = function () {
+    try {
+      var parts = [].map.call(arguments, function (a) {
+        return a && a.stack ? a.stack : (a && a.message ? a.message : String(a));
+      });
+      faults.push('console: ' + parts.join(' ').slice(0, 400));
+    } catch (e) {}
+    return realError.apply(console, arguments);
+  };
   window.addEventListener('unhandledrejection', function (e) {
     faults.push('promise: ' + ((e.reason && e.reason.message) || e.reason));
   });
