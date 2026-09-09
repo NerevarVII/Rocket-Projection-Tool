@@ -307,7 +307,8 @@
               <div style="display: {{ showWhy }}; font: 400 12px/1.55 'Saira Condensed', sans-serif; color: #3D3629; margin-top: 8px; padding: 10px; background: #E9DFC7; border: 1px solid #B6A382; text-wrap: pretty;">
                 <p style="margin: 0 0 8px;">The plot flies your rocket through a step-by-step simulation: average thrust shaped to the motor's real curve, mass dropping as propellant burns, drag on the body tube, then the canopy's drag area once the ejection charge fires at burnout plus the delay.</p>
                 <p style="margin: 0 0 8px;">Wind rises with height on a one-seventh power law, and the rocket weathercocks — it turns partway into the relative wind, which is why a breezy day lands it upwind of where you'd guess.</p>
-                <p style="margin: 0;">The circle comes from {{ cloudN }} runs with the wind, delay, weight, drag and canopy all jittered. Nine in ten of those land inside it. It is a good guess, not a promise: thermals, a tangled shroud line and a hard-packed field all beat the model.</p>
+                <p style="margin: 0 0 8px;">The circle comes from {{ cloudN }} runs with the wind, delay, weight, drag and canopy all jittered. Nine in ten of those land inside it. It is a good guess, not a promise: thermals, a tangled shroud line and a hard-packed field all beat the model.</p>
+                <p style="margin: 0;">{{ calNote }}</p>
               </div>
               <button onClick="{{ toggleWhy }}" style="margin-top: 8px; padding: 0; border: 0; background: none; font: 600 11px/1 'Saira Condensed', sans-serif; letter-spacing: .16em; color: #BE2A2E; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;">{{ whyLabel }}</button>
             </div>
@@ -710,7 +711,7 @@ class Component extends DCLogic {
     tiltDeg: 0, tiltMode: 'custom', tiltBrg: 270,
     res: null, heading: 262, showWhy: false, runs: 0, profile: null,
     pad: [46.76097, -96.92830], padName: 'HOME PAD', padBusy: false, moveMode: false, padMsg: null,
-    tempF: 68, elevFt: 900, wx: 'manual', wxAt: null,
+    tempF: 68, elevFt: 900, pressHPa: null, rh: null, wx: 'manual', wxAt: null,
     layer: 'street', tileNote: null,
     spec: null, recBusy: false, recMsg: null,
     nkOpen: false, nkErr: null, stock: {}, engMotor: null,
@@ -721,7 +722,10 @@ class Component extends DCLogic {
   };
 
   HOME = [46.76097, -96.92830];   /* built-in fallback only; overridden by a saved or linked pad */
-  CLOUD = 42;
+  /* The dispersion cloud. 42 runs put about +/-15% of noise on the search
+     radius between identical taps; the adaptive descent step made a run cheap
+     enough to hold 200, which brings that down to roughly +/-5%. */
+  CLOUD = 200;
   LOGKEY = 'rp.flightlog.v1';
   PADKEY = 'rp.pad.v1';
 
@@ -785,7 +789,7 @@ class Component extends DCLogic {
 
   /* module first; the global is the fallback when this runs from a single bundled file */
   async waitForPhysics() {
-    const BUILD = '9';   /* bump when physics.js changes */
+    const BUILD = '10';  /* bump when physics.js changes */
     if (window.RPPhysics && window.RPPhysics.KITS) return window.RPPhysics;
     try {
       const m = await import('./physics.js?v=' + BUILD);
@@ -938,7 +942,7 @@ class Component extends DCLogic {
     try {
       const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat.toFixed(4) +
         '&longitude=' + lon.toFixed(4) +
-        '&current=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m' +
+        '&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m' +
         '&wind_speed_unit=mph&temperature_unit=fahrenheit&timezone=UTC&_=' + Date.now();
       const r = await fetch(u, { cache: 'no-store' });
       if (r.ok) {
@@ -949,6 +953,10 @@ class Component extends DCLogic {
             wind: c.wind_speed_10m,
             gust: isFinite(c.wind_gusts_10m) ? c.wind_gusts_10m : c.wind_speed_10m * 1.4,
             from: c.wind_direction_10m, tempF: c.temperature_2m,
+            /* station pressure and humidity: the density the rocket actually
+               flies in, instead of a standard-atmosphere column */
+            pressHPa: isFinite(c.surface_pressure) ? c.surface_pressure : null,
+            rh: isFinite(c.relative_humidity_2m) ? c.relative_humidity_2m : null,
             elevM: j.elevation, src: 'FORECAST MODEL', obs: c.time + 'Z',
             profile: await this.askProfile(lat, lon, c, j.elevation)
           };
@@ -972,6 +980,9 @@ class Component extends DCLogic {
               const dir = pp.windDirection && pp.windDirection.value;
               const gkm = pp.windGust && pp.windGust.value;
               const tC = pp.temperature && pp.temperature.value;
+              const paPa = (pp.stationPressure && pp.stationPressure.value) ||
+                           (pp.barometricPressure && pp.barometricPressure.value);
+              const rhv = pp.relativeHumidity && pp.relativeHumidity.value;
               const elv = st.properties.elevation && st.properties.elevation.value;
               if (isFinite(kmh) && isFinite(dir)) {
                 const mph = kmh * 0.621371;
@@ -985,6 +996,8 @@ class Component extends DCLogic {
                 return {
                   wind: mph, gust: isFinite(gkm) ? gkm * 0.621371 : mph * 1.4, from: dir,
                   tempF: isFinite(tC) ? tC * 9 / 5 + 32 : undefined,
+                  pressHPa: isFinite(paPa) ? paPa / 100 : null,
+                  rh: isFinite(rhv) ? rhv : null,
                   elevM: isFinite(elv) ? elv : undefined,
                   src: 'STN ' + st.properties.stationIdentifier +
                     (away != null ? ' · ' + away.toFixed(0) + ' MI' : ''),
@@ -1023,6 +1036,8 @@ class Component extends DCLogic {
       dirFrom: ((Math.round(w.from) % 360) + 360) % 360,
       tempF: isFinite(w.tempF) ? Math.round(w.tempF) : this.state.tempF,
       elevFt: isFinite(w.elevM) ? Math.round(w.elevM * 3.28084) : this.state.elevFt,
+      pressHPa: isFinite(w.pressHPa) ? w.pressHPa : null,
+      rh: isFinite(w.rh) ? w.rh : null,
       profile: w.profile || null,
       wx: 'live', wxSrc: w.src, wxAt: new Date(), wxFrom: from, wxAge: age,
       wxCoord: at.map(v => v.toFixed(4)).join(', ')
@@ -1341,7 +1356,10 @@ class Component extends DCLogic {
     });
 
     const land = P.offsetLatLon(lat, lon, r.nom.east, r.nom.north);
-    const circle = L.circle(land, { radius: Math.max(r.r90, 8), color: '#BE2A2E', weight: 2, dashArray: '7 5', fillColor: '#BE2A2E', fillOpacity: 0.1, interactive: false });
+    /* r90 is measured about the cloud's own centre, so draw it there. It sits a
+       few metres from the nominal flight; the cross stays on the nominal. */
+    const ringAt = r.center ? P.offsetLatLon(lat, lon, r.center[0], r.center[1]) : land;
+    const circle = L.circle(ringAt, { radius: Math.max(r.r90, 8), color: '#BE2A2E', weight: 2, dashArray: '7 5', fillColor: '#BE2A2E', fillOpacity: 0.1, interactive: false });
     circle._rpPlot = true; circle.addTo(marks);
     const cross = L.marker(land, { icon: L.divIcon({ className: '', iconSize: [0, 0], html:
       '<div style="font:700 24px/1 \'Space Mono\',monospace;color:#BE2A2E;transform:translate(-50%,-50%);text-shadow:0 0 3px #F6F0E1,0 0 3px #F6F0E1,0 0 3px #F6F0E1,0 0 3px #F6F0E1">&#10006;</div>' }) });
@@ -1385,15 +1403,44 @@ class Component extends DCLogic {
       windMs: this.state.windMph / 2.23694, gustMs: this.state.gustMph / 2.23694,
       dirFrom: this.state.dirFrom,
       elevM: this.state.elevFt / 3.28084, tempC: (this.state.tempF - 32) * 5 / 9, alpha: 0.16,
+      pressHPa: this.state.pressHPa, rh: this.state.rh,
       profile: this.state.profile
     };
+  }
+
+  /* What the flight log says about this model's bias, and the sim state with
+     that correction folded in as drag. Nothing extra to type: it comes from the
+     predicted-vs-actual pairs already sitting in the log. */
+  bias() {
+    const P = this.P;
+    if (!P || !P.logBias) return { n: 0, ratio: 1, resid: 0, ready: false };
+    return P.logBias(this.state.saved);
+  }
+
+  tunedState() {
+    const S = this.simState(), b = this.bias();
+    if (b.ready && this.P.fitDragScale) {
+      const k = this.P.fitDragScale(S, b.ratio);
+      S.cd = S.cd * k;
+      S.cdScale = k;
+    }
+    S.bias = b;
+    return S;
   }
 
   recompute() {
     if (!this.P) return;
     clearTimeout(this.pending);
     this.pending = setTimeout(() => {
-      const res = this.P.predict(this.simState(), this.CLOUD);
+      const S = this.tunedState();
+      const res = this.P.predict(S, this.CLOUD);
+      res.bias = S.bias;
+      /* The cloud only knows the uncertainty we modelled. The log knows the
+         uncertainty that actually turned up. Combine them so the ring is a
+         search radius rather than a statement about the simulation. */
+      if (S.bias && S.bias.ready) {
+        res.r90 = Math.hypot(res.r90, 1.2816 * S.bias.resid * res.nom.drift);
+      }
       this.setState(s => ({ res, runs: s.runs + 1 }), () => this.drawPlot());
     }, 120);
   }
@@ -1477,7 +1524,7 @@ class Component extends DCLogic {
 
   /* coarse sweep then a fine pass, in chunks so the screen stays alive */
   bestTilt() {
-    const P = this.P, S = this.simState();
+    const P = this.P, S = this.tunedState();
     const cands = [];
     for (let t = 0; t <= 30; t += 3) cands.push(t);
     let best = 0, bestMiss = Infinity, i = 0;
@@ -1796,6 +1843,13 @@ class Component extends DCLogic {
         : 'Running the flight…',
       runNote: res ? this.CLOUD + ' RUNS · ' + fmt(this.d(nom.apogee)) + ' ' + this.u() + ' APOGEE' : 'SIMULATING…',
       cloudN: String(this.CLOUD),
+      calNote: (res && res.bias && res.bias.ready)
+        ? 'Tuned to your log: across ' + res.bias.n + ' marked flights this model walked ' +
+          (res.bias.ratio >= 1
+            ? Math.round((res.bias.ratio - 1) * 100) + '% short'
+            : Math.round((1 - res.bias.ratio) * 100) + '% long') +
+          ', so the drag is nudged to match and the circle is widened by the scatter that was left over.'
+        : 'Motor numbers are the NAR certified static-test values, not the packet. Mark where you find each rocket and after three logged flights the model starts correcting itself against your own results.',
 
       kitName: kit ? kit.n : '—',
       kitLabel: kit ? kit.n.toUpperCase() + ' · ' + st.motorName : '',

@@ -4,9 +4,35 @@
 export const G = 9.80665;
 export const FT = 3.28084, MPH = 2.23694, IN = 39.3701, OZ = 0.0352740;
 
-export function airDensity(elevM, tempC) {
-  const p = 101325 * Math.pow(1 - 2.25577e-5 * elevM, 5.25588);
-  return p / (287.058 * (tempC + 273.15));
+/* Density of the air the rocket is actually flying in.
+   pressHPa is the station (surface) pressure at the site if we have it — the
+   forecast gives one. Without it we fall back to the ISA column, which quietly
+   assumes 1013.25 hPa at sea level and is off by a couple of percent on a low
+   day. rh is relative humidity in percent; moist air is lighter than dry air,
+   worth up to about 1% on a warm humid afternoon. */
+export function airDensity(elevM, tempC, pressHPa, rh) {
+  const T = tempC + 273.15;
+  const p = (isFinite(pressHPa) && pressHPa > 300 && pressHPa < 1200)
+    ? pressHPa * 100
+    : 101325 * Math.pow(1 - 2.25577e-5 * elevM, 5.25588);
+  if (!isFinite(rh) || rh <= 0) return p / (287.058 * T);
+  /* Tetens saturation vapour pressure, Pa */
+  const es = 610.94 * Math.exp(17.625 * tempC / (tempC + 243.04));
+  const pv = Math.min(p * 0.9, Math.max(0, rh) / 100 * es);
+  return (p - pv) / (287.058 * T) + pv / (461.495 * T);
+}
+
+/* Speed of sound, for the transonic drag rise. */
+export function soundSpeed(tempC) { return 20.0468 * Math.sqrt(tempC + 273.15); }
+
+/* Subsonic drag is flat, then climbs through the transonic. A Wizard or a
+   Hi-Flier on a C6 gets past M0.4, where treating Cd as constant starts to
+   overpredict apogee. Nothing here flies past about M0.9. */
+export function machFactor(M) {
+  if (!(M > 0.5)) return 1;
+  if (M >= 1.1) return 1.9;
+  const f = (M - 0.5) / 0.6;
+  return 1 + 0.9 * f * f;
 }
 
 function makeShape(r) {
@@ -73,9 +99,22 @@ export function simulate(o) {
   let axis = rodAxis.slice(), onRod = true, deployed = false, lifted = false;
   let apogee = 0, apogeeT = 0, rodExit = 0, maxV = 0, maxAcc = 0;
   let deployAlt = null, deploySpeed = null, deployT = null;
+  let fullOpenT = null, fullOpenAlt = null;
   const traj = []; let sc = 0, landed = false;
+  /* Line stretch, then the canopy fills. Nothing opens instantly: for a 12 in
+     Estes chute that is roughly a third of a second of dead time and another
+     half second of filling, all of it spent falling at close to the speed the
+     rocket had at ejection. */
+  const chuteD = Math.sqrt(Math.max(1e-6, (o.chuteCdA || 0) / 0.75 * 4 / Math.PI));
+  const lag = o.rec === 'streamer' ? 0.15 : 0.25 + 0.35 * chuteD;
+  const fill = o.rec === 'streamer' ? 0.25 : 0.30 + 0.90 * chuteD;
+  const aSound = o.aSound || 340;
   while (t < 400) {
-    const dt = deployed ? 0.02 : 0.004;
+    /* Fine steps through boost and coast. Under canopy the motion is nearly at
+       terminal velocity, so the step can open right up once the chute has
+       finished inflating — that is what pays for a bigger dispersion cloud. */
+    const dt = !deployed ? 0.004
+      : (t - deployT < lag + fill + 0.5 ? 0.01 : 0.05);
     const F = t < burn ? Favg * shape(t / burn) : 0;
     let wv, wEz = wE, wNz = wN;
     if (o.profile && o.profile.length) {
@@ -97,7 +136,15 @@ export function simulate(o) {
       const bl = Math.sqrt(bx * bx + by * by + bz * bz) || 1;
       axis = [bx / bl, by / bl, bz / bl];
     }
-    const CdA = deployed ? o.chuteCdA + 0.35 * A : o.cd * A;
+    const bodyCdA = o.cd * A * machFactor(rs / aSound);
+    let CdA = bodyCdA;
+    if (deployed) {
+      const since = t - deployT;
+      /* area grows, so ramp on the square of the fill fraction */
+      const f = Math.min(1, Math.max(0, (since - lag) / fill));
+      const open = f * f;
+      CdA = bodyCdA * (1 - open) + (o.chuteCdA + 0.35 * A) * open;
+    }
     const q = 0.5 * rho * CdA * rs;
     let ax = (F * axis[0] - q * rvx) / m, ay = (F * axis[1] - q * rvy) / m, az = (F * axis[2] - q * rvz) / m - G;
     if (onRod) {
@@ -119,6 +166,7 @@ export function simulate(o) {
     if (t < burn + 0.05 && am > maxAcc) maxAcc = am;
     if (z > apogee) { apogee = z; apogeeT = t; }
     if (!deployed && t >= ejectT) { deployed = true; deployAlt = z; deployT = t; deploySpeed = sp; }
+    if (deployed && fullOpenT == null && t - deployT >= lag + fill) { fullOpenT = t; fullOpenAlt = z; }
     if (o.keepTraj && sc++ % (deployed ? 12 : 25) === 0) traj.push({ t, z, x, y });
     if (z <= 0 && t > 0.3) {
       const frac = prevZ / Math.max(1e-9, prevZ - z);
@@ -135,48 +183,67 @@ export function simulate(o) {
     bearing: (Math.atan2(x, y) * 180 / Math.PI + 360) % 360,
     apogee, apogeeT, rodExit, maxV, maxAcc,
     deployAlt, deploySpeed, deployT, ejectT, burn, descentTime,
-    descentRate: descentTime > 0 ? deployAlt / descentTime : 0,
+    fullOpenT, fullOpenAlt,
+    /* rate under a fully open canopy, not smeared by the inflation drop */
+    descentRate: (fullOpenT != null && t - fullOpenT > 0.5)
+      ? fullOpenAlt / (t - fullOpenT)
+      : (descentTime > 0 ? deployAlt / descentTime : 0),
     flightTime: t, liftMass: o.dryMass + o.motorInit, traj
   };
 }
 
-/* impulse Ns, delay s, maxThrust N, burn s, initial mass g, propellant g, max lift g, mount mm */
+/* impulse Ns, delay s, maxThrust N, burn s, initial mass g, propellant g, max lift g, mount mm
+
+   Total impulse and burn time are the NAR-certified static-test values from
+   thrustcurve.org, NOT the numbers on the Estes packet. The packet quotes the
+   impulse class ceiling: a C6 is sold as 10 N-s but certifies at 8.8, a D12 as
+   20 but certifies at 16.8. Simulating off the packet overpredicts drift by
+   close to 20% on a D.
+
+   dm, where present, is the measured average delay from the certification
+   document. Estes delays run short — a D12-5 averages 4.25 s, not 5.0 — and
+   that moves where the chute opens. Motors with est:true have no certification
+   sheet I could pull, so they still carry the manufacturer's figures.
+
+   mx is still the manufacturer's peak thrust where the cert sheet was not to
+   hand. It only shapes the curve and sets rod-exit speed; apogee and drift are
+   insensitive to it (a 40% error in mx moves apogee by 0.2%). */
 export const MOTORS = [
-  { n: "1/4A3-3T", I: 0.625, d: 3, mx: 4.9, b: 0.25, mi: 5.6, mp: 0.85, lift: 28, mm: 13 },
-  { n: "1/2A3-2T", I: 1.25, d: 2, mx: 8.3, b: 0.30, mi: 5.6, mp: 1.75, lift: 57, mm: 13 },
-  { n: "1/2A3-4T", I: 1.25, d: 4, mx: 8.3, b: 0.30, mi: 6.0, mp: 1.75, lift: 28, mm: 13 },
-  { n: "A3-4T", I: 2.5, d: 4, mx: 6.8, b: 0.60, mi: 7.6, mp: 3.50, lift: 57, mm: 13 },
-  { n: "A10-3T", I: 2.5, d: 3, mx: 13.0, b: 0.80, mi: 7.9, mp: 3.78, lift: 85, mm: 13 },
-  { n: "1/2A6-2", I: 1.25, d: 2, mx: 8.9, b: 0.30, mi: 15.0, mp: 1.56, lift: 57, mm: 18 },
-  { n: "A8-3", I: 2.5, d: 3, mx: 10.7, b: 0.50, mi: 16.2, mp: 3.12, lift: 85, mm: 18 },
-  { n: "A8-5", I: 2.5, d: 5, mx: 13.3, b: 0.50, mi: 17.6, mp: 3.12, lift: 57, mm: 18 },
-  { n: "B4-2", I: 5, d: 2, mx: 13.2, b: 1.10, mi: 19.8, mp: 8.33, lift: 113, mm: 18 },
-  { n: "B4-4", I: 5, d: 4, mx: 13.2, b: 1.10, mi: 21.0, mp: 8.33, lift: 99, mm: 18 },
-  { n: "B6-2", I: 5, d: 2, mx: 12.1, b: 0.80, mi: 19.3, mp: 6.24, lift: 127, mm: 18 },
-  { n: "B6-4", I: 5, d: 4, mx: 12.1, b: 0.80, mi: 20.1, mp: 6.24, lift: 113, mm: 18 },
-  { n: "B6-6", I: 5, d: 6, mx: 12.1, b: 0.80, mi: 22.1, mp: 6.24, lift: 71, mm: 18 },
-  { n: "C5-3", I: 10, d: 3, mx: 20.4, b: 1.85, mi: 23.6, mp: 11.00, lift: 227, mm: 18 },
-  { n: "C6-3", I: 10, d: 3, mx: 15.3, b: 1.60, mi: 24.9, mp: 12.48, lift: 113, mm: 18 },
-  { n: "C6-5", I: 10, d: 5, mx: 15.3, b: 1.60, mi: 25.8, mp: 12.48, lift: 113, mm: 18 },
-  { n: "C6-7", I: 10, d: 7, mx: 15.3, b: 1.60, mi: 26.9, mp: 12.48, lift: 71, mm: 18 },
-  { n: "C11-3", I: 10, d: 3, mx: 22.1, b: 0.80, mi: 32.2, mp: 11.00, lift: 170, mm: 24 },
-  { n: "C11-5", I: 10, d: 5, mx: 22.1, b: 0.80, mi: 33.3, mp: 11.00, lift: 142, mm: 24 },
-  { n: "C11-7", I: 10, d: 7, mx: 22.1, b: 0.80, mi: 34.5, mp: 11.00, lift: 71, mm: 24 },
-  { n: "D12-3", I: 20, d: 3, mx: 32.9, b: 1.60, mi: 42.2, mp: 24.93, lift: 396, mm: 24 },
-  { n: "D12-5", I: 20, d: 5, mx: 32.9, b: 1.60, mi: 43.1, mp: 24.93, lift: 283, mm: 24 },
-  { n: "D12-7", I: 20, d: 7, mx: 32.9, b: 1.60, mi: 44.0, mp: 24.93, lift: 226, mm: 24 },
-  { n: "E9-4", I: 30, d: 4, mx: 25.0, b: 2.80, mi: 56.7, mp: 35.80, lift: 425, mm: 24 },
-  { n: "E9-6", I: 30, d: 6, mx: 25.0, b: 2.80, mi: 56.7, mp: 35.80, lift: 340, mm: 24 },
-  { n: "E9-8", I: 30, d: 8, mx: 25.0, b: 2.80, mi: 56.7, mp: 35.80, lift: 283, mm: 24 },
-  { n: "E12-4", I: 29.5, d: 4, mx: 29.6, b: 2.70, mi: 63.2, mp: 36.90, lift: 397, mm: 24 },
-  { n: "E12-6", I: 29.5, d: 6, mx: 29.6, b: 2.70, mi: 63.2, mp: 36.90, lift: 397, mm: 24 },
-  { n: "E12-8", I: 29.5, d: 8, mx: 29.6, b: 2.70, mi: 63.2, mp: 36.90, lift: 397, mm: 24 },
+  { n: "1/4A3-3T", I: 0.6, d: 3, mx: 4.9, b: 0.30, mi: 5.6, mp: 0.85, lift: 28, mm: 13 },
+  { n: "1/2A3-2T", I: 1.1, d: 2, mx: 8.3, b: 0.40, mi: 5.6, mp: 1.75, lift: 57, mm: 13 },
+  { n: "1/2A3-4T", I: 1.1, d: 4, mx: 8.3, b: 0.40, mi: 6.0, mp: 1.75, lift: 28, mm: 13 },
+  { n: "A3-4T", I: 2.2, d: 4, mx: 6.8, b: 1.00, mi: 7.6, mp: 3.50, lift: 57, mm: 13 },
+  { n: "A10-3T", I: 1.9, d: 3, mx: 9.7, b: 1.10, mi: 7.9, mp: 3.78, lift: 85, mm: 13 },
+  { n: "1/2A6-2", I: 1.1, d: 2, mx: 8.9, b: 0.30, mi: 15.0, mp: 1.56, lift: 57, mm: 18 },
+  { n: "A8-3", I: 2.5, d: 3, mx: 10.7, b: 0.70, mi: 16.2, mp: 3.12, lift: 85, mm: 18 },
+  { n: "A8-5", I: 2.5, d: 5, mx: 10.7, b: 0.70, mi: 17.6, mp: 3.12, lift: 57, mm: 18 },
+  { n: "B4-2", I: 5, d: 2, mx: 13.2, b: 1.00, mi: 19.8, mp: 8.33, lift: 113, mm: 18 },
+  { n: "B4-4", I: 5, d: 4, mx: 13.2, b: 1.00, mi: 21.0, mp: 8.33, lift: 99, mm: 18 },
+  { n: "B6-2", I: 4.3, d: 2, mx: 12.1, b: 0.90, mi: 19.3, mp: 6.24, lift: 127, mm: 18 },
+  { n: "B6-4", I: 4.3, d: 4, mx: 12.1, b: 0.90, mi: 20.1, mp: 6.24, lift: 113, mm: 18 },
+  { n: "B6-6", I: 4.3, d: 6, mx: 12.1, b: 0.90, mi: 22.1, mp: 6.24, lift: 71, mm: 18 },
+  { n: "C5-3", I: 7.8, d: 3, mx: 20.4, b: 2.00, mi: 23.6, mp: 11.00, lift: 227, mm: 18 },
+  { n: "C6-3", I: 8.8, d: 3, mx: 14.1, b: 1.90, mi: 24.9, mp: 12.48, lift: 113, mm: 18 },
+  { n: "C6-5", I: 8.8, d: 5, mx: 14.1, b: 1.90, mi: 25.8, mp: 12.48, lift: 113, mm: 18 },
+  { n: "C6-7", I: 8.8, d: 7, mx: 14.1, b: 1.90, mi: 26.9, mp: 12.48, lift: 71, mm: 18 },
+  { n: "C11-3", I: 8.8, d: 3, mx: 22.1, b: 0.80, mi: 32.2, mp: 11.00, lift: 170, mm: 24 },
+  { n: "C11-5", I: 8.8, d: 5, mx: 22.1, b: 0.80, mi: 33.3, mp: 11.00, lift: 142, mm: 24 },
+  { n: "C11-7", I: 8.8, d: 7, mx: 22.1, b: 0.80, mi: 34.5, mp: 11.00, lift: 71, mm: 24 },
+  { n: "D12-3", I: 16.8, d: 3, mx: 29.73, b: 1.70, mi: 42.2, mp: 24.93, lift: 396, dm: 2.39, mm: 24 },
+  { n: "D12-5", I: 16.8, d: 5, mx: 29.73, b: 1.70, mi: 43.1, mp: 24.93, lift: 283, dm: 4.25, mm: 24 },
+  { n: "D12-7", I: 16.8, d: 7, mx: 29.73, b: 1.70, mi: 44.0, mp: 24.93, lift: 226, dm: 5.75, mm: 24 },
+  { est: true, n: "E9-4", I: 30, d: 4, mx: 25.0, b: 2.80, mi: 56.7, mp: 35.80, lift: 425, mm: 24 },
+  { est: true, n: "E9-6", I: 30, d: 6, mx: 25.0, b: 2.80, mi: 56.7, mp: 35.80, lift: 340, mm: 24 },
+  { est: true, n: "E9-8", I: 30, d: 8, mx: 25.0, b: 2.80, mi: 56.7, mp: 35.80, lift: 283, mm: 24 },
+  { n: "E12-4", I: 27.24, d: 4, mx: 33.29, b: 2.44, mi: 63.2, mp: 36.90, lift: 397, dm: 3.98, mm: 24 },
+  { n: "E12-6", I: 27.24, d: 6, mx: 33.29, b: 2.44, mi: 63.2, mp: 36.90, lift: 397, dm: 5.68, mm: 24 },
+  { n: "E12-8", I: 27.24, d: 8, mx: 33.29, b: 2.44, mi: 63.2, mp: 36.90, lift: 397, dm: 8.63, mm: 24 },
   { n: "F15-4", I: 49.61, d: 4, mx: 25.26, b: 3.45, mi: 103.8, mp: 60.0, lift: 482, mm: 29 },
   { n: "F15-6", I: 49.61, d: 6, mx: 25.26, b: 3.45, mi: 103.8, mp: 60.0, lift: 482, mm: 29 },
   { n: "F15-8", I: 49.61, d: 8, mx: 25.26, b: 3.45, mi: 103.8, mp: 60.0, lift: 482, mm: 29 },
-  { n: "E16-4", I: 33.68, d: 4, mx: 26.44, b: 2.09, mi: 84.7, mp: 40.0, lift: 566, mm: 29 },
-  { n: "E16-6", I: 33.68, d: 6, mx: 26.44, b: 2.09, mi: 84.7, mp: 40.0, lift: 453, mm: 29 },
-  { n: "E16-8", I: 33.68, d: 8, mx: 26.44, b: 2.09, mi: 84.7, mp: 40.0, lift: 396, mm: 29 },
+  { n: "E16-4", I: 33.38, d: 4, mx: 26.44, b: 2.09, mi: 84.7, mp: 40.0, lift: 566, dm: 4.14, mm: 29 },
+  { n: "E16-6", I: 33.38, d: 6, mx: 26.44, b: 2.09, mi: 84.7, mp: 40.0, lift: 453, dm: 5.82, mm: 29 },
+  { n: "E16-8", I: 33.38, d: 8, mx: 26.44, b: 2.09, mi: 84.7, mp: 40.0, lift: 396, dm: 8.07, mm: 29 },
   /* G40 and G80 are the composite motors Estes sells for the big Pro Series II kits.
      ThrustCurve has the certified numbers; neither publishes a max lift weight, so
      these two are worked out at the usual 5:1 thrust to weight and flagged est. */
@@ -249,6 +316,15 @@ export function motorByName(name) {
   return MOTORS.find(m => m.n === name) || MOTORS[15];
 }
 
+/* linearly interpolated percentile of a sorted array */
+function pct(sorted, q) {
+  const n = sorted.length;
+  if (!n) return 0;
+  if (n === 1) return sorted[0];
+  const i = q * (n - 1), lo = Math.floor(i), hi = Math.min(n - 1, lo + 1);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
+}
+
 function randn() {
   let u = 0, v = 0;
   while (u === 0) u = Math.random();
@@ -269,7 +345,7 @@ export function chuteCdA(S) {
     const d = equivChuteIn(S.chuteIn, S.chuteN) * 0.0254;
     return 0.75 * Math.PI * Math.pow(d / 2, 2);
   }
-  const rho = airDensity(S.elevM, S.tempC);
+  const rho = airDensity(S.elevM, S.tempC, S.pressHPa, S.rh);
   const m = S.massKg + S.motor.mi / 1000 - S.motor.mp / 1000;
   return 2 * m * G / (rho * Math.pow(Math.max(1, S.rateMs), 2));
 }
@@ -281,14 +357,21 @@ function leanBearing(S) {
   return S.tiltBrg;
 }
 
+/* The printed delay is the label; the certification sheet records what the
+   delay grains actually measured. Use the measured one when we have it. */
+export function delayOf(motor) {
+  return isFinite(motor.dm) ? motor.dm : motor.d;
+}
+
 function baseOpts(S) {
   return {
     dryMass: S.massKg, dia: S.diaM, cd: S.cd,
-    impulse: S.motor.I, burn: S.motor.b, maxThrust: S.motor.mx, delay: S.motor.d,
+    impulse: S.motor.I, burn: S.motor.b, maxThrust: S.motor.mx, delay: delayOf(S.motor),
     motorInit: S.motor.mi / 1000, propMass: S.motor.mp / 1000,
-    chuteCdA: chuteCdA(S),
+    chuteCdA: chuteCdA(S), rec: S.rec,
     windSpeed: S.windMs, windFrom: S.dirFrom, alpha: S.alpha,
-    rho: airDensity(S.elevM, S.tempC),
+    rho: airDensity(S.elevM, S.tempC, S.pressHPa, S.rh),
+    aSound: soundSpeed(S.tempC),
     profile: S.profile || null, rodLen: S.rodM, weathercock: S.wc,
     tiltDeg: S.tiltDeg, tiltAzim: leanBearing(S)
   };
@@ -314,21 +397,38 @@ export function predict(S, nCloud = 42) {
     if (mc.profile) {
       /* jitter the whole column together: gusts lift every level, and a shift in
          the synoptic flow turns every level. */
-      mc.windScale = Math.max(0.2, mc.windSpeed / Math.max(0.3, wEff));
+      /* Scale relative to the profile's own surface wind, the same reference the
+         nominal run uses. Dividing by wEff here instead left the cloud sitting
+         upwind of the nominal point whenever gust > wind. */
+      mc.windScale = Math.max(0.2, mc.windSpeed / Math.max(0.3, S.windMs || wEff));
       mc.dirShift = randn() * 12;
     }
     mc.cd = Math.max(0.15, S.cd * (1 + randn() * 0.18));
     mc.dryMass = S.massKg * (1 + randn() * 0.04);
     mc.chuteCdA = chuteCdA(S) * (1 + randn() * 0.14);
-    mc.delay = Math.max(0, S.motor.d + (Math.random() * 2 - 1) * Math.max(1, S.motor.d * 0.1));
+    /* Certification sheets show delay scatter of roughly a quarter of a second
+       one sigma on the short grains and half a second on the long ones. That is
+       a normal spread around the measured mean, not a flat +/-10% of the label. */
+    const dNom = delayOf(S.motor);
+    mc.delay = Math.max(0, dNom + randn() * (0.22 + 0.035 * dNom));
     mc.weathercock = Math.min(1, Math.max(0, S.wc + randn() * 0.12));
     const r = simulate(mc);
     pts.push([r.east, r.north]);
   }
+  /* Where the cloud actually sits. The nominal run is one flight at the mean of
+     every input; because the system is not linear the cloud does not centre on
+     it exactly, and the ring should follow the cloud. */
+  const cx = pts.reduce((a, p) => a + p[0], 0) / (pts.length || 1);
+  const cy = pts.reduce((a, p) => a + p[1], 0) / (pts.length || 1);
   const rads = pts
-    .map(p => Math.sqrt(Math.pow(p[0] - nom.east, 2) + Math.pow(p[1] - nom.north, 2)))
+    .map(p => Math.hypot(p[0] - cx, p[1] - cy))
     .sort((a, b) => a - b);
-  const r90 = rads[Math.floor(rads.length * 0.9)] || 0;
+  /* Interpolated percentile. Picking rads[floor(0.9n)] on a 42-run cloud was
+     both the 88th percentile and jittery enough to move the answer 15% between
+     identical calls. */
+  const r90 = pct(rads, 0.90);
+  const r50 = pct(rads, 0.50);
+  const center = [cx, cy];
 
   /* where the chute is out, split from the drift under canopy */
   const tj = nom.traj;
@@ -337,7 +437,7 @@ export function predict(S, nCloud = 42) {
     if (tj[i].z > tj[apoIdx].z) apoIdx = i;
     if (nom.deployT != null && tj[i].t <= nom.deployT) depIdx = i;
   }
-  return { nom, pts, r90, apoIdx, depIdx };
+  return { nom, pts, r90, r50, center, apoIdx, depIdx };
 }
 
 /* mean walk for a given rod tilt leaned into the wind — the recommender's cost function */
@@ -350,9 +450,71 @@ export function meanMiss(S, tiltDeg, runs) {
     o.tiltAzim = S.dirFrom;
     o.windSpeed = Math.max(0, S.windMs + (gust - S.windMs) * Math.random());
     o.windFrom = S.dirFrom + randn() * 10;
+    if (o.profile) o.windScale = Math.max(0.2, o.windSpeed / Math.max(0.3, S.windMs || gust));
     tot += simulate(o).drift;
   }
   return tot / runs;
+}
+
+/* ---------------------------------------------------------------------------
+   Calibration from the flight log.
+
+   Every saved flight already carries a predicted walk and, when a spot was
+   marked, the walk that actually happened. That is a free error signal and it
+   costs the user nothing to produce. Take the median of act/pred in log space
+   so one balled-up chute cannot drag the fit, and shrink toward 1 so three
+   flights do not swing the model as hard as thirty.
+   --------------------------------------------------------------------------- */
+export function logBias(entries) {
+  const rs = [];
+  (entries || []).forEach(e => {
+    const p = Number(e && e.pred), a = Number(e && e.act);
+    if (!(p > 20) || !(a > 0)) return;          /* very short walks are all noise */
+    const r = a / p;
+    if (r < 0.25 || r > 4) return;              /* chute failure, wrong pad, typo */
+    rs.push(Math.log(r));
+  });
+  const n = rs.length;
+  if (n < 3) return { n, ratio: 1, resid: 0, ready: false };
+  rs.sort((x, y) => x - y);
+  const med = n % 2 ? rs[(n - 1) / 2] : (rs[n / 2 - 1] + rs[n / 2]) / 2;
+  /* robust scatter: median absolute deviation, scaled to a normal sigma */
+  const mad = rs.map(v => Math.abs(v - med)).sort((x, y) => x - y);
+  const m = mad.length % 2 ? mad[(mad.length - 1) / 2]
+                           : (mad[mad.length / 2 - 1] + mad[mad.length / 2]) / 2;
+  const sd = Math.max(0.05, 1.4826 * m);
+  /* shrink toward no correction with 4 pseudo-flights of weight */
+  const shrunk = med * n / (n + 4);
+  return {
+    n, ready: true,
+    ratio: Math.min(1.5, Math.max(0.67, Math.exp(shrunk))),
+    resid: Math.min(0.6, sd)
+  };
+}
+
+/* Turn "the model walks 12% long" into a physical drag multiplier, by finding
+   the Cd scale that moves the nominal landing point by that ratio. Doing it
+   this way rather than stretching the output keeps the flight path, the apogee
+   marker and the landing cross telling the same story. */
+export function fitDragScale(S, ratio) {
+  if (!(ratio > 0) || Math.abs(ratio - 1) < 0.02) return 1;
+  const at = k => {
+    const o = baseOpts(Object.assign({}, S, { cd: S.cd * k }));
+    o.windSpeed = Math.max(S.gustMs, S.windMs) / 2 + S.windMs / 2;
+    if (o.profile) o.windScale = o.windSpeed / Math.max(0.3, S.windMs || o.windSpeed);
+    return simulate(o).drift;
+  };
+  const d0 = at(1);
+  if (!(d0 > 0)) return 1;
+  const want = d0 * ratio;
+  /* more drag means less drift, so the bracket runs the other way */
+  let lo = 0.5, hi = 2.0;
+  if (ratio > 1) { hi = 1; lo = 0.5; } else { lo = 1; hi = 2.0; }
+  for (let i = 0; i < 18; i++) {
+    const mid = (lo + hi) / 2;
+    if (at(mid) > want) lo = mid; else hi = mid;
+  }
+  return Math.min(2.0, Math.max(0.5, (lo + hi) / 2));
 }
 
 export function offsetLatLon(lat, lon, east, north) {
@@ -369,7 +531,7 @@ export function fmt(v, dp) {
 }
 
 if (typeof window !== "undefined") {
-  window.RPPhysics = { G, FT, MPH, IN, OZ, airDensity, simulate, MOTORS, KITS, motorByName, chuteCdA, predict, offsetLatLon, compassWord, fmt };
+  window.RPPhysics = { G, FT, MPH, IN, OZ, airDensity, soundSpeed, machFactor, delayOf, logBias, fitDragScale, simulate, MOTORS, KITS, motorByName, chuteCdA, predict, offsetLatLon, compassWord, fmt };
 }
 
 
