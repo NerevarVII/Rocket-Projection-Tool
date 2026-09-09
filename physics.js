@@ -188,15 +188,15 @@ export const MOTORS = [
 
 /* published kit specs: weight without motor (g), body diameter (mm), chute (in) */
 export const KITS = [
-  { n: "Alpha", g: 22.7, mm: 25, chute: 12, motor: "C6-5", mount: 18, grp: "fleet",
+  { n: "Alpha", g: 22.7, mm: 25, chute: 12, motor: "C6-5", mount: 18, grp: "catalog",
     note: "1,000 ft on a C6-5, 18 mm mount", eng: ["1/2A6-2", "A8-3", "A8-5", "B4-4", "B6-4", "B6-6", "C6-5", "C6-7"] },
-  { n: "Sun-Sational", g: 44.4, mm: 25, chute: 12, motor: "C6-5", mount: 18, grp: "fleet",
+  { n: "Sun-Sational", g: 44.4, mm: 25, chute: 12, motor: "C6-5", mount: 18, grp: "catalog",
     note: "1,100 ft on a C, 18 mm mount", eng: ["A8-3", "B4-4", "B6-4", "C6-5", "C6-7"] },
-  { n: "Patriot M-104", g: 56.7, mm: 42, chute: 12, motor: "C6-5", mount: 18, grp: "fleet",
+  { n: "Patriot M-104", g: 56.7, mm: 42, chute: 12, motor: "C6-5", mount: 18, grp: "catalog",
     note: "600 ft, 18 mm mount", eng: ["B4-4", "B6-4", "B6-6", "C6-5"] },
-  { n: "Green Eggs (empty)", g: 99.2, mm: 46, chute: 18, motor: "D12-5", mount: 24, cd: 0.6, grp: "fleet",
+  { n: "Green Eggs (empty)", g: 99.2, mm: 46, chute: 18, motor: "D12-5", mount: 24, cd: 0.6, grp: "catalog",
     note: "1,050 ft on a D12-5, 24 mm mount", eng: ["C11-5", "D12-5", "D12-7"] },
-  { n: "Green Eggs (one egg)", g: 156, mm: 46, chute: 18, motor: "D12-5", mount: 24, cd: 0.6, grp: "fleet",
+  { n: "Green Eggs (one egg)", g: 156, mm: 46, chute: 18, motor: "D12-5", mount: 24, cd: 0.6, grp: "catalog",
     note: "825 ft with an egg aboard, 24 mm mount", eng: ["C11-3", "C11-5", "D12-5"] },
   { n: "Alpha III", g: 34, mm: 25, chute: 12, motor: "C6-5", mount: 18, grp: "catalog",
     note: "1,100 ft on a C, 18 mm mount", eng: ["1/2A6-2", "A8-3", "B4-4", "B6-4", "C6-5", "C6-7"] },
@@ -484,4 +484,30 @@ export function quickApogee(motor, dryG, diaMm, cd, elevM, tempC) {
     rodLen: 0.9144, weathercock: 0.75, tiltDeg: 0, tiltAzim: 0
   });
   return { apogeeM: r.apogee, rodExit: r.rodExit, lifts: (dryG + motor.mi) <= motor.lift };
+}
+
+
+/* ---------------------------------------------------------------------------
+   Which rockets you actually own. Stock kits and ones you entered yourself are
+   flagged the same way, by key, so the fleet survives updates to the catalog.
+   --------------------------------------------------------------------------- */
+export const FLEETKEY = 'rp.fleet.v1';
+
+export function kitKey(k) { return k.id || k.n; }
+
+export function loadFleet() {
+  let raw = [];
+  try { raw = JSON.parse(localStorage.getItem(FLEETKEY) || '[]'); } catch (e) {}
+  return Array.isArray(raw) ? raw : [];
+}
+
+export function inFleet(k) { return loadFleet().indexOf(kitKey(k)) >= 0; }
+
+export function toggleFleet(k) {
+  const key = kitKey(k);
+  const list = loadFleet();
+  const at = list.indexOf(key);
+  if (at >= 0) list.splice(at, 1); else list.push(key);
+  try { localStorage.setItem(FLEETKEY, JSON.stringify(list)); } catch (e) {}
+  return list;
 }

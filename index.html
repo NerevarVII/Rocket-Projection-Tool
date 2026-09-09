@@ -77,6 +77,11 @@
               <button onClick="{{ toggleMove }}" style="flex: 1; min-width: 0; padding: 12px 4px 11px; border: 1px solid #221F1A; font: 600 10px/1 'Saira Condensed', sans-serif; letter-spacing: .06em; cursor: pointer; background: {{ moveBg }}; color: {{ moveFg }};">{{ moveLabel }}</button>
               <button onClick="{{ goHome }}" style="flex: none; padding: 12px 12px 11px; border: 1px solid #221F1A; background: #F6F0E1; color: #221F1A; font: 600 10px/1 'Saira Condensed', sans-serif; letter-spacing: .06em; cursor: pointer;">HOME</button>
             </div>
+            <div style="display: flex; gap: 6px;">
+              <button onClick="{{ setAsHome }}" style="flex: 1; min-width: 0; padding: 10px 4px 9px; border: 1px dashed #221F1A; background: transparent; color: #221F1A; font: 600 10px/1 'Saira Condensed', sans-serif; letter-spacing: .06em; cursor: pointer;">{{ homeBtnLabel }}</button>
+              <button onClick="{{ copyPadLink }}" style="flex: 1; min-width: 0; padding: 10px 4px 9px; border: 1px dashed #221F1A; background: transparent; color: #221F1A; font: 600 10px/1 'Saira Condensed', sans-serif; letter-spacing: .06em; cursor: pointer;">COPY PAD LINK</button>
+            </div>
+            <div style="display: {{ showPadMsg }}; font: 400 11px/1.4 'Saira Condensed', sans-serif; color: #16303F; text-wrap: pretty;">{{ padMsgTxt }}</div>
             <div style="display: {{ showTileNote }}; font: 400 11px/1.4 'Saira Condensed', sans-serif; color: #4A4133;">{{ tileNote }}</div>
           </div>
 
@@ -124,6 +129,16 @@
               </div>
             </div>
 
+              <div style="background: #F6F0E1; border: 1px solid #221F1A; padding: 11px 12px; margin-bottom: 10px;">
+                <div style="display: flex; gap: 10px; align-items: center;">
+                  <div style="flex: 1; min-width: 0;">
+                    <div style="font: 600 10px/1 'Saira Condensed', sans-serif; letter-spacing: .18em; color: #6B6152;">FLYING</div>
+                    <div style="font: 700 16px/1.15 'Saira Condensed', sans-serif; margin-top: 3px;">{{ kitName }}</div>
+                    <div style="font: 400 11px/1.3 'Space Mono', monospace; color: #6B6152; margin-top: 3px;">{{ kitSpec }}</div>
+                  </div>
+                  <button onClick="{{ goFleet }}" style="flex: none; padding: 11px 12px 10px; border: 1px solid #221F1A; background: #16303F; color: #F6F0E1; font: 600 11px/1 'Saira Condensed', sans-serif; letter-spacing: .14em; cursor: pointer;">CHANGE</button>
+                </div>
+              </div>
             <div style="background: #E9DFC7; border: 1px solid #B6A382; padding: 12px;">
               <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px;">
                 <div style="font: 700 12px/1 'Saira Condensed', sans-serif; letter-spacing: .22em;">WIND</div>
@@ -273,14 +288,6 @@
             <div style="display: {{ showRecMsg }}; background: #E4EDE4; border: 1px solid #2C6E58; padding: 10px 11px; font: 400 12px/1.5 'Saira Condensed', sans-serif; color: #1E3B31; text-wrap: pretty;">{{ recMsg }}</div>
 
             <div style="background: #E9DFC7; border: 1px solid #B6A382; padding: 11px 12px;">
-              <div style="display: flex; gap: 10px; align-items: center;">
-                <div style="flex: 1; min-width: 0;">
-                  <div style="font: 600 10px/1 'Saira Condensed', sans-serif; letter-spacing: .18em; color: #6B6152;">FLYING</div>
-                  <div style="font: 700 16px/1.15 'Saira Condensed', sans-serif; margin-top: 3px;">{{ kitName }}</div>
-                  <div style="font: 400 11px/1.3 'Space Mono', monospace; color: #6B6152; margin-top: 3px;">{{ kitSpec }}</div>
-                </div>
-                <button onClick="{{ goFleet }}" style="flex: none; padding: 11px 12px 10px; border: 1px solid #221F1A; background: #16303F; color: #F6F0E1; font: 600 11px/1 'Saira Condensed', sans-serif; letter-spacing: .14em; cursor: pointer;">CHANGE</button>
-              </div>
             </div>
 
             <div style="background: #C9AC7E; border-top: 1px dashed #221F1A; padding-top: 10px;">
@@ -523,6 +530,7 @@
                     <button onClick="{{ m.tap }}" style="padding: 7px 9px 6px; border-width: 1px; border-color: currentColor; border-style: {{ m.dash }}; cursor: pointer; font-family: 'Space Mono', monospace; font-size: 11px; font-weight: {{ m.weight }}; background: {{ m.bg }}; color: {{ m.fg }};">{{ m.n }}</button>
                   </sc-for>
                 </div>
+<button onClick="{{ k.ownTap }}" style="margin-top: 9px; margin-right: 6px; padding: 8px 11px 7px; border: 1px dashed currentColor; cursor: pointer; font: 600 10px/1 'Saira Condensed', sans-serif; letter-spacing: .1em; background: {{ k.ownedBg }}; color: {{ k.ownedFg }};">{{ k.owned }}</button>
                 <button onClick="{{ k.del }}" style="margin-top: 9px; padding: 6px 10px 5px; border: 1px dashed currentColor; background: transparent; color: currentColor; cursor: pointer; font: 600 10px/1 'Saira Condensed', sans-serif; letter-spacing: .1em; opacity: .8;">REMOVE</button>
               </div>
             </sc-for>
@@ -585,6 +593,7 @@
             </div>
 
             <div style="font: 700 12px/1 'Saira Condensed', sans-serif; letter-spacing: .24em;">YOUR FLEET</div>
+            <div style="display: {{ fleetEmpty }}; font: 400 11px/1.45 'Saira Condensed', sans-serif; opacity: .75; text-wrap: pretty;">Nothing marked yet. Find your rockets in the catalog below, or add your own above, and tap ADD TO MY FLEET. What you own is remembered on this device.</div>
             <sc-for list="{{ fleetCards }}" as="k" hint-placeholder-count="5">
               <div onClick="{{ k.tap }}" style="border: 1px solid #221F1A; padding: 11px 12px; cursor: pointer; background: {{ k.bg }}; color: {{ k.fg }};">
                 <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
@@ -597,6 +606,7 @@
                     <button onClick="{{ m.tap }}" style="padding: 7px 9px 6px; border-width: 1px; border-color: currentColor; border-style: {{ m.dash }}; cursor: pointer; font-family: 'Space Mono', monospace; font-size: 11px; font-weight: {{ m.weight }}; background: {{ m.bg }}; color: {{ m.fg }};">{{ m.n }}</button>
                   </sc-for>
                 </div>
+                <button onClick="{{ k.ownTap }}" style="margin-top: 9px; padding: 8px 11px 7px; border: 1px dashed currentColor; cursor: pointer; font: 600 10px/1 'Saira Condensed', sans-serif; letter-spacing: .1em; background: {{ k.ownedBg }}; color: {{ k.ownedFg }};">{{ k.owned }}</button>
               </div>
             </sc-for>
             <div style="font: 700 12px/1 'Saira Condensed', sans-serif; letter-spacing: .24em; margin-top: 6px;">CATALOG</div>
@@ -614,6 +624,7 @@
                     <button onClick="{{ m.tap }}" style="padding: 7px 9px 6px; border-width: 1px; border-color: currentColor; border-style: {{ m.dash }}; cursor: pointer; font-family: 'Space Mono', monospace; font-size: 11px; font-weight: {{ m.weight }}; background: {{ m.bg }}; color: {{ m.fg }};">{{ m.n }}</button>
                   </sc-for>
                 </div>
+                <button onClick="{{ k.ownTap }}" style="margin-top: 9px; padding: 8px 11px 7px; border: 1px dashed currentColor; cursor: pointer; font: 600 10px/1 'Saira Condensed', sans-serif; letter-spacing: .1em; background: {{ k.ownedBg }}; color: {{ k.ownedFg }};">{{ k.owned }}</button>
               </div>
             </sc-for>
           </div>
@@ -686,20 +697,21 @@ class Component extends DCLogic {
     windMph: 8, gustMph: 14, dirFrom: 270,
     tiltDeg: 0, tiltMode: 'custom', tiltBrg: 270,
     res: null, heading: 262, showWhy: false, runs: 0, profile: null,
-    pad: [46.76097, -96.92830], padName: 'HOME PAD', padBusy: false, moveMode: false,
+    pad: [46.76097, -96.92830], padName: 'HOME PAD', padBusy: false, moveMode: false, padMsg: null,
     tempF: 68, elevFt: 900, wx: 'manual', wxAt: null,
     layer: 'street', tileNote: null,
     spec: null, recBusy: false, recMsg: null,
     nkOpen: false, nkErr: null, stock: {}, engMotor: null,
-    me: null, meErr: null,
+    me: null, meErr: null, fleet: [],
     nk: { n: '', oz: '', mm: '', mount: 18, rec: 'chute', chute: 18, chuteN: 1, rateFps: 20 },
     compass: 'off', aimLive: false, mark: null, markBusy: false, saved: [],
     phone: false
   };
 
-  HOME = [46.76097, -96.92830];
+  HOME = [46.76097, -96.92830];   /* built-in fallback only; overridden by a saved or linked pad */
   CLOUD = 42;
   LOGKEY = 'rp.flightlog.v1';
+  PADKEY = 'rp.pad.v1';
 
   /* several hosts, because sandboxed frames block some of them */
   /* maxNativeZoom lets Leaflet upscale the deepest real tile instead of asking for
@@ -730,6 +742,8 @@ class Component extends DCLogic {
     this.P = await this.waitForPhysics();
     if (this.P && this.P.syncMyKits) { try { this.P.syncMyKits(); } catch (e) {} }
     if (this.P && this.P.loadStock) { try { this.setState({ stock: this.P.loadStock() }); } catch (e) {} }
+    if (this.P && this.P.loadFleet) { try { this.setState({ fleet: this.P.loadFleet() }); } catch (e) {} }
+    this.restorePad();
     let saved = [];
     try { saved = JSON.parse(localStorage.getItem(this.LOGKEY) || '[]'); } catch (e) {}
     this.setState({ saved: Array.isArray(saved) ? saved : [] });
@@ -1018,6 +1032,63 @@ class Component extends DCLogic {
     );
   }
 
+  /* ---------- the pad, kept across refreshes ----------
+     Order of trust: a pad in the link, then one saved on this device, then the
+     built-in fallback. The link route matters because clearing site data wipes
+     storage but not a bookmark or a home-screen icon. */
+  restorePad() {
+    let home = null, pad = null, name = 'HOME PAD';
+    try {
+      const q = new URLSearchParams(location.search);
+      const raw = q.get('pad') || (location.hash.match(/pad=([-0-9.,]+)/) || [])[1];
+      if (raw) {
+        const m = raw.split(',').map(Number);
+        if (m.length === 2 && isFinite(m[0]) && isFinite(m[1]) &&
+            Math.abs(m[0]) <= 90 && Math.abs(m[1]) <= 180) { home = m; pad = m.slice(); }
+      }
+    } catch (e) {}
+    if (!home) {
+      try {
+        const j = JSON.parse(localStorage.getItem(this.PADKEY) || 'null');
+        if (j && Array.isArray(j.home)) {
+          home = j.home;
+          pad = Array.isArray(j.pad) ? j.pad : j.home.slice();
+          name = j.name || name;
+        }
+      } catch (e) {}
+    }
+    if (home) {
+      this.HOME = home.slice();
+      this.setState({ pad: pad.slice(), padName: name });
+    }
+  }
+
+  savePadState(extra) {
+    const st = this.state;
+    const body = Object.assign({ home: this.HOME, pad: st.pad, name: st.padName }, extra || {});
+    try { localStorage.setItem(this.PADKEY, JSON.stringify(body)); } catch (e) {}
+  }
+
+  setAsHome() {
+    this.HOME = this.state.pad.slice();
+    this.setState({ padName: 'HOME PAD' }, () => {
+      this.savePadState();
+      this.setState({ padMsg: 'Saved as home on this device. Copy the link to keep it through a data clear.' });
+      setTimeout(() => this.setState({ padMsg: null }), 6000);
+    });
+  }
+
+  copyPadLink() {
+    const [a, b] = this.HOME;
+    const url = location.origin + location.pathname + '?pad=' + a.toFixed(5) + ',' + b.toFixed(5);
+    const done = () => {
+      this.setState({ padMsg: 'Link copied. Bookmark it or add it to your home screen and the pad survives anything.' });
+      setTimeout(() => this.setState({ padMsg: null }), 7000);
+    };
+    if (navigator.clipboard) navigator.clipboard.writeText(url).then(done, () => this.setState({ padMsg: url }));
+    else this.setState({ padMsg: url });
+  }
+
   homePad() {
     this.setState({ pad: this.HOME.slice(), padName: 'HOME PAD', moveMode: false }, () => {
       this.repad(); this.fetchWeather(false);
@@ -1025,6 +1096,7 @@ class Component extends DCLogic {
   }
 
   repad() {
+    this.savePadState();
     if (!this.map) return;
     const L = window.L, pad = this.state.pad;
     this.layers.rings.clearLayers();
@@ -1309,6 +1381,11 @@ class Component extends DCLogic {
     this.setState(patch, () => this.recompute());
   }
 
+  /* ---------- what you own ---------- */
+  toggleFleet(kit) {
+    this.setState({ fleet: this.P.toggleFleet(kit) });
+  }
+
   /* ---------- range box ---------- */
   bumpStock(name, delta) {
     const now = (this.state.stock[name] || 0) + delta;
@@ -1342,7 +1419,7 @@ class Component extends DCLogic {
     const kit = P.KITS[idx];
     this.setState({
       nkOpen: false, nkErr: null, stock: {}, engMotor: null,
-    me: null, meErr: null,
+    me: null, meErr: null, fleet: [],
       nk: { n: '', oz: '', mm: '', mount: 18, rec: 'chute', chute: 18, chuteN: 1, rateFps: 20 }
     }, () => this.set({ kitIdx: idx, motorName: kit.motor, spec: null }));
   }
@@ -1546,8 +1623,13 @@ class Component extends DCLogic {
       });
     });
 
+    const owned = k => P && st.fleet.indexOf(P.kitKey(k)) >= 0;
     const kitCard = (k, i) => ({
       name: k.n, note: k.note,
+      owned: owned(k) ? 'IN MY FLEET \u2713' : '+ ADD TO MY FLEET',
+      ownedBg: owned(k) ? '#2F6B4F' : 'transparent',
+      ownedFg: owned(k) ? cream : 'currentColor',
+      ownTap: e => { e.stopPropagation(); this.toggleFleet(k); },
       mass: (k.g / 28.3495).toFixed(1) + ' OZ · ' + k.mm + 'MM',
       bg: st.kitIdx === i ? navy : card,
       fg: st.kitIdx === i ? cream : ink,
@@ -1806,8 +1888,10 @@ class Component extends DCLogic {
         tap: () => this.nkSet({ rec: o.id })
       })),
 
-      fleetCards: P ? P.KITS.map((k, i) => ({ k, i })).filter(x => x.k.grp === 'fleet').map(x => kitCard(x.k, x.i)) : [],
-      catalogCards: P ? P.KITS.map((k, i) => ({ k, i })).filter(x => x.k.grp === 'catalog').map(x => kitCard(x.k, x.i)) : [],
+      fleetCards: P ? P.KITS.map((k, i) => ({ k, i })).filter(x => owned(x.k)).map(x => kitCard(x.k, x.i)) : [],
+      fleetEmpty: P && P.KITS.some(k => owned(k)) ? 'none' : 'block',
+      catalogCards: P ? P.KITS.map((k, i) => ({ k, i }))
+        .filter(x => x.k.grp === 'catalog' && !owned(x.k)).map(x => kitCard(x.k, x.i)) : [],
 
       windTxt: String(st.windMph), gustTxt: String(st.gustMph),
       dirTxt: Math.round(st.dirFrom) + '° ' + word(st.dirFrom),
@@ -1924,6 +2008,11 @@ class Component extends DCLogic {
       setTilt: e => this.set({ tiltDeg: parseInt(e.target.value, 10) }),
 
       goFleet: () => this.goTab('fleet'),
+      setAsHome: () => this.setAsHome(),
+      copyPadLink: () => this.copyPadLink(),
+      padMsgTxt: st.padMsg || '',
+      showPadMsg: st.padMsg ? 'block' : 'none',
+      homeBtnLabel: st.padName === 'HOME PAD' ? 'HOME IS SET' : 'SET AS HOME',
       toggleWhy: () => this.setState(s => ({ showWhy: !s.showWhy })),
       whyLabel: st.showWhy ? 'CLOSE' : 'HOW THIS IS CALCULATED →',
       whyShort: 'A thrust-curve simulation with weathercocking and canopy drag, jittered ' + this.CLOUD +
