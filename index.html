@@ -250,6 +250,22 @@
               <input type="range" min="0" max="45" step="1" value="{{ tiltVal }}" onChange="{{ setTilt }}" onInput="{{ setTilt }}" style="width: 100%; height: 38px; margin-top: 6px;">
               <button onClick="{{ goStraight }}" style="width: 100%; padding: 11px 4px 10px; border: 1px solid #221F1A; cursor: pointer; font-family: 'Saira Condensed', sans-serif; font-weight: 600; font-size: 10px; letter-spacing: .12em; background: {{ straightBg }}; color: {{ straightFg }};">STRAIGHT UP · NO LEAN</button>
 
+              <div style="margin-top: 11px; padding-top: 11px; border-top: 1px dashed #B6A382;">
+                <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px;">
+                  <div style="font: 600 10px/1 'Saira Condensed', sans-serif; letter-spacing: .16em; color: #6B6152;">MEASURE THE REAL ROD</div>
+                  <div style="font: 600 9px/1 'Saira Condensed', sans-serif; letter-spacing: .12em; color: #96620A;">{{ inclState }}</div>
+                </div>
+                <div style="display: {{ showInclRead }}; border: 1px solid #B6A382; background: #F6F0E1; padding: 12px 10px; margin-bottom: 8px; text-align: center;">
+                  <div style="font: 700 42px/1 'Space Mono', monospace; color: {{ inclColour }};">{{ inclBig }}</div>
+                  <div style="font: 600 10px/1.5 'Saira Condensed', sans-serif; letter-spacing: .12em; color: #6B6152; margin-top: 6px; text-wrap: pretty;">{{ inclSub }}</div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 7px;">
+                  <button onClick="{{ inclTap }}" style="width: 100%; padding: 11px 4px 10px; border: 1px solid #221F1A; cursor: pointer; font-family: 'Saira Condensed', sans-serif; font-weight: 600; font-size: 10px; letter-spacing: .12em; background: #F6F0E1; color: #221F1A;">{{ inclLabel }}</button>
+                  <button onClick="{{ inclUse }}" style="display: {{ showInclUse }}; width: 100%; padding: 11px 4px 10px; border: 1px solid #221F1A; cursor: pointer; font-family: 'Saira Condensed', sans-serif; font-weight: 600; font-size: 10px; letter-spacing: .12em; background: {{ inclUseBg }}; color: {{ inclUseFg }};">{{ inclUseLabel }}</button>
+                </div>
+                <div style="font: 400 11px/1.55 'Saira Condensed', sans-serif; color: #6B6152; margin-top: 8px; text-wrap: pretty;">{{ inclHint }}</div>
+              </div>
+
               <div style="display: {{ showAim }}; flex-direction: column; gap: 9px; margin-top: 11px; padding-top: 11px; border-top: 1px dashed #B6A382;">
                 <div style="display: flex; align-items: center; justify-content: space-between;">
                   <div style="font: 600 10px/1 'Saira Condensed', sans-serif; letter-spacing: .16em; color: #6B6152;">AIM THE NOSE</div>
@@ -708,7 +724,7 @@ class Component extends DCLogic {
   state = {
     tab: 'plot', kitIdx: 0, motorName: 'C6-5',
     windMph: 8, gustMph: 14, dirFrom: 270,
-    tiltDeg: 0, tiltMode: 'custom', tiltBrg: 270,
+    tiltDeg: 0, tiltMode: 'custom', tiltBrg: 270, incl: null,
     res: null, heading: 262, showWhy: false, runs: 0, profile: null,
     pad: [46.76097, -96.92830], padName: 'HOME PAD', padBusy: false, moveMode: false, padMsg: null,
     tempF: 68, elevFt: 900, pressHPa: null, rh: null, wx: 'manual', wxAt: null,
@@ -810,10 +826,102 @@ class Component extends DCLogic {
     clearTimeout(this.pending);
     window.removeEventListener('resize', this.onResize);
     this.stopWalkFix();
+    this.stopIncline();
     if (this.onOrient) {
       window.removeEventListener('deviceorientationabsolute', this.onOrient, true);
       window.removeEventListener('deviceorientation', this.onOrient, true);
     }
+  }
+
+  /* ---------- inclinometer: measure the rod instead of guessing at it ----------
+     The accelerometer already in the phone is a better protractor than a
+     slider. Lay the back of the phone along the rod with the top toward the
+     nose and gravity, read in the device's own frame, gives the angle off
+     vertical directly. It counts down first because you cannot watch the screen
+     while the phone is up against the rod. */
+  startIncline() {
+    const cur = this.state.incl;
+    if (cur && (cur.phase === 'count' || cur.phase === 'sampling')) { this.stopIncline(); return; }
+    const DME = window.DeviceMotionEvent;
+    if (!DME) {
+      this.setState({ incl: { phase: 'fail', err: 'No motion sensor here. The slider still works.' } });
+      return;
+    }
+    if (typeof DME.requestPermission === 'function') {
+      DME.requestPermission()
+        .then(r => r === 'granted' ? this.runIncline()
+          : this.setState({ incl: { phase: 'fail', err: 'Motion access was refused. Allow it under Settings, Apps, Safari, Motion & Orientation Access — or just use the slider.' } }))
+        .catch(() => this.setState({ incl: { phase: 'fail', err: 'Motion access was refused. Use the slider instead.' } }));
+      return;
+    }
+    this.runIncline();
+  }
+
+  runIncline() {
+    /* the heading gives us which way it leans; the angle alone still works without it */
+    if (this.state.compass !== 'live') this.startCompass(true);
+    let n = 3;
+    this.setState({ incl: { phase: 'count', count: n } });
+    clearInterval(this.inclTimer);
+    this.inclTimer = setInterval(() => {
+      n -= 1;
+      if (n > 0) { this.setState({ incl: { phase: 'count', count: n } }); return; }
+      clearInterval(this.inclTimer); this.inclTimer = null;
+      this.sampleIncline();
+    }, 1000);
+  }
+
+  sampleIncline() {
+    const tilts = [];
+    this.setState({ incl: { phase: 'sampling' } });
+    this.onMotion = e => {
+      const a = e.accelerationIncludingGravity;
+      if (!a || !isFinite(a.y)) return;
+      const mag = Math.hypot(a.x || 0, a.y || 0, a.z || 0);
+      /* only keep samples that are gravity and nothing else — a knock or a
+         wobble reads far from 9.8 and would drag the average */
+      if (!(mag > 8.6 && mag < 11.0)) return;
+      /* absolute value, so it reads the same whichever end is up */
+      tilts.push(Math.acos(Math.min(1, Math.abs(a.y) / mag)) * 180 / Math.PI);
+    };
+    window.addEventListener('devicemotion', this.onMotion, true);
+    this.inclStop = setTimeout(() => {
+      window.removeEventListener('devicemotion', this.onMotion, true);
+      this.onMotion = null;
+      if (tilts.length < 8) {
+        this.setState({ incl: { phase: 'fail', err: 'No steady reading. Hold the phone flat against the rod and keep it still for a second.' } });
+        return;
+      }
+      tilts.sort((x, y) => x - y);
+      /* middle half only: one bump cannot move the answer */
+      const lo = Math.floor(tilts.length * 0.25), hi = Math.ceil(tilts.length * 0.75);
+      const mid = tilts.slice(lo, hi);
+      const deg = mid.reduce((t, v) => t + v, 0) / mid.length;
+      this.setState({
+        incl: {
+          phase: 'done', deg,
+          grade: Math.tan(deg * Math.PI / 180) * 100,
+          brg: this.state.compass === 'live' ? Math.round(this.state.heading) : null,
+          shaky: (tilts[hi - 1] - tilts[lo]) > 2.5
+        }
+      });
+    }, 1600);
+  }
+
+  stopIncline() {
+    clearInterval(this.inclTimer); this.inclTimer = null;
+    clearTimeout(this.inclStop); this.inclStop = null;
+    if (this.onMotion) { window.removeEventListener('devicemotion', this.onMotion, true); this.onMotion = null; }
+    this.setState({ incl: null });
+  }
+
+  useIncline() {
+    const i = this.state.incl;
+    if (!i || i.phase !== 'done') return;
+    const patch = { tiltDeg: Math.max(0, Math.min(45, Math.round(i.deg))) };
+    if (i.brg != null) patch.tiltBrg = ((i.brg % 360) + 360) % 360;
+    this.set(patch);
+    this.setState({ incl: Object.assign({}, i, { applied: true }) });
   }
 
   /* ---------- compass: real device heading, simulated only as a labelled fallback ---------- */
@@ -2034,6 +2142,39 @@ class Component extends DCLogic {
       gustDown: () => this.set({ gustMph: Math.max(st.windMph, st.gustMph - 1) }),
 
       tiltVal: st.tiltDeg,
+      ...(() => {
+        const ic = st.incl || { phase: 'idle' };
+        const live = ic.phase === 'count' || ic.phase === 'sampling';
+        return {
+          inclState: ic.phase === 'done' ? (ic.applied ? 'ROD SET' : 'READY')
+            : ic.phase === 'fail' ? 'NO READING' : (live ? 'MEASURING' : ''),
+          showInclRead: (live || ic.phase === 'done') ? 'block' : 'none',
+          inclColour: ic.phase === 'sampling' ? '#BE2A2E' : '#221F1A',
+          inclBig: ic.phase === 'count' ? String(ic.count)
+            : ic.phase === 'sampling' ? 'HOLD'
+            : ic.phase === 'done' ? Math.round(ic.deg) + '\u00B0' : '',
+          inclSub: ic.phase === 'count' ? 'GET IT ON THE ROD'
+            : ic.phase === 'sampling' ? 'KEEP IT STILL'
+            : ic.phase === 'done'
+              ? Math.round(ic.grade) + '% GRADE \u00B7 ' +
+                (ic.brg != null ? 'LEANS ' + ic.brg + '\u00B0 ' + word(ic.brg) : 'NO COMPASS, ANGLE ONLY') +
+                (ic.shaky ? ' \u00B7 READING WOBBLED' : '')
+              : '',
+          inclLabel: live ? 'CANCEL'
+            : ic.phase === 'done' ? 'MEASURE AGAIN'
+            : ic.phase === 'fail' ? 'TRY AGAIN' : 'MEASURE OFF THE ROD',
+          inclTap: () => this.startIncline(),
+          showInclUse: ic.phase === 'done' ? 'block' : 'none',
+          inclUseBg: ic.applied ? navy : '#E8A33D',
+          inclUseFg: ic.applied ? cream : ink,
+          inclUseLabel: ic.applied
+            ? 'ROD SET TO ' + Math.round(ic.deg) + '\u00B0' + (ic.brg != null ? ' \u00B7 ' + ic.brg + '\u00B0' : '')
+            : 'USE THIS ANGLE',
+          inclUse: () => this.useIncline(),
+          inclHint: ic.phase === 'fail' ? ic.err
+            : 'Lay the back of the phone along the rod, top end toward the nose. Tap, then you have three seconds to get it there before it reads.'
+        };
+      })(),
       tiltTxt: st.tiltDeg === 0 ? 'STRAIGHT UP'
         : st.tiltDeg + '° TOWARD ' + Math.round(st.tiltBrg) + '° ' + word(st.tiltBrg),
       /* one side only — the lean is a magnitude, the aim bearing carries the direction */
