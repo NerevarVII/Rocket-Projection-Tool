@@ -87,13 +87,23 @@ export function windAtHeight(profile, z, alpha) {
 
 export function simulate(o) {
   const rho = o.rho, A = Math.PI * Math.pow(o.dia / 2, 2);
+  /* Two-stage: the booster burns first with everything aboard, then falls away
+     and the sustainer lights on its tail. Estes stages by burn-through, so the
+     gap is a few hundredths of a second — treated as zero here. All the
+     sustainer's times (its burn, its delay, ejection) shift by the booster's
+     burn. */
+  const B = o.booster || null;
+  const bBurn = B ? B.burn : 0;
+  const bFavg = B ? B.impulse / B.burn : 0;
+  const bShape = B ? makeShape(B.maxThrust / bFavg) : null;
   const burn = o.burn, Favg = o.impulse / burn;
   const shape = o.shapeFn || makeShape(o.maxThrust / Favg);
-  const ejectT = burn + o.delay;
+  const ejectT = bBurn + burn + o.delay;
+  let staged = !B, sepState = null;
   const toRad = ((o.windFrom + 180) * Math.PI) / 180;
   const wE = Math.sin(toRad), wN = Math.cos(toRad);
   let t = 0, x = 0, y = 0, z = 0, vx = 0, vy = 0, vz = 0;
-  let m = o.dryMass + o.motorInit, impDone = 0;
+  let m = o.dryMass + o.motorInit + (B ? B.dryMass + B.motorInit : 0), impDone = 0, bImpDone = 0;
   const tr = (o.tiltDeg || 0) * Math.PI / 180, ta = (o.tiltAzim || 0) * Math.PI / 180;
   const rodAxis = [Math.sin(tr) * Math.sin(ta), Math.sin(tr) * Math.cos(ta), Math.cos(tr)];
   let axis = rodAxis.slice(), onRod = true, deployed = false, lifted = false;
@@ -115,7 +125,9 @@ export function simulate(o) {
        finished inflating — that is what pays for a bigger dispersion cloud. */
     const dt = !deployed ? 0.004
       : (t - deployT < lag + fill + 0.5 ? 0.01 : 0.05);
-    const F = t < burn ? Favg * shape(t / burn) : 0;
+    let F;
+    if (!staged) F = t < bBurn ? bFavg * bShape(t / bBurn) : 0;
+    else { const ts = t - bBurn; F = ts >= 0 && ts < burn ? Favg * shape(ts / burn) : 0; }
     let wv, wEz = wE, wNz = wN;
     if (o.profile && o.profile.length) {
       const w = windAtHeight(o.profile, z, o.alpha);
@@ -136,7 +148,8 @@ export function simulate(o) {
       const bl = Math.sqrt(bx * bx + by * by + bz * bz) || 1;
       axis = [bx / bl, by / bl, bz / bl];
     }
-    const bodyCdA = o.cd * A * machFactor(rs / aSound);
+    /* the stack carries two sets of fins and a joint; call it 15% more drag */
+    const bodyCdA = o.cd * (staged ? 1 : 1.15) * A * machFactor(rs / aSound);
     let CdA = bodyCdA;
     if (deployed) {
       const since = t - deployT;
@@ -155,15 +168,25 @@ export function simulate(o) {
     vx += ax * dt; vy += ay * dt; vz += az * dt;
     const prevZ = z;
     x += vx * dt; y += vy * dt; z += vz * dt; t += dt;
-    impDone += F * dt;
-    m = o.dryMass + o.motorInit - o.propMass * Math.min(1, impDone / o.impulse);
+    if (!staged) {
+      bImpDone += F * dt;
+      m = o.dryMass + o.motorInit + B.dryMass + B.motorInit - B.propMass * Math.min(1, bImpDone / B.impulse);
+      if (t >= bBurn) {
+        staged = true;
+        sepState = { t, x, y, z, vx, vy, vz };
+        m = o.dryMass + o.motorInit;
+      }
+    } else {
+      impDone += F * dt;
+      m = o.dryMass + o.motorInit - o.propMass * Math.min(1, impDone / o.impulse);
+    }
     if (onRod && Math.sqrt(x * x + y * y + z * z) >= o.rodLen) {
       onRod = false; rodExit = Math.sqrt(vx * vx + vy * vy + vz * vz);
     }
     const sp = Math.sqrt(vx * vx + vy * vy + vz * vz);
     if (sp > maxV) maxV = sp;
     const am = Math.sqrt(ax * ax + ay * ay + az * az);
-    if (t < burn + 0.05 && am > maxAcc) maxAcc = am;
+    if (t < bBurn + burn + 0.05 && am > maxAcc) maxAcc = am;
     if (z > apogee) { apogee = z; apogeeT = t; }
     if (!deployed && t >= ejectT) { deployed = true; deployAlt = z; deployT = t; deploySpeed = sp; }
     if (deployed && fullOpenT == null && t - deployT >= lag + fill) { fullOpenT = t; fullOpenAlt = z; }
@@ -177,7 +200,34 @@ export function simulate(o) {
     }
   }
   const descentTime = deployT != null ? t - deployT : 0;
+  /* Where the empty booster ends up. It separates a few hundred feet up with
+     the stack's velocity, then tumbles: a short tube with fins falls at about
+     10 to 15 m/s, which is an effective CdA of five or six reference areas. */
+  let booster = null;
+  if (B && sepState) {
+    let bx = sepState.x, by = sepState.y, bz = sepState.z, bvx = sepState.vx, bvy = sepState.vy, bvz = sepState.vz, bt = sepState.t;
+    const bm = B.dryMass + B.motorInit - B.propMass, bCdA = 5.5 * A;
+    for (let i = 0; i < 20000 && bz > 0; i++) {
+      const dt = 0.02;
+      let wv, wEz = wE, wNz = wN;
+      if (o.profile && o.profile.length) {
+        const w = windAtHeight(o.profile, bz, o.alpha); wv = w.spd * (o.windScale || 1);
+        const tr2 = ((w.dir + (o.dirShift || 0) + 180) * Math.PI) / 180; wEz = Math.sin(tr2); wNz = Math.cos(tr2);
+      } else wv = o.windSpeed * Math.pow(Math.max(bz, 2) / 10, o.alpha);
+      const rvx = bvx - wv * wEz, rvy = bvy - wv * wNz, rvz = bvz;
+      const rs = Math.sqrt(rvx * rvx + rvy * rvy + rvz * rvz);
+      const q = 0.5 * rho * bCdA * rs;
+      bvx -= q * rvx / bm * dt; bvy -= q * rvy / bm * dt; bvz -= (q * rvz / bm + G) * dt;
+      bx += bvx * dt; by += bvy * dt; bz += bvz * dt; bt += dt;
+    }
+    booster = {
+      east: bx, north: by, drift: Math.sqrt(bx * bx + by * by),
+      bearing: (Math.atan2(bx, by) * 180 / Math.PI + 360) % 360,
+      sepAlt: sepState.z, sepT: sepState.t, landT: bt
+    };
+  }
   return {
+    booster,
     landed, east: x, north: y,
     drift: Math.sqrt(x * x + y * y),
     bearing: (Math.atan2(x, y) * 180 / Math.PI + 360) % 360,
@@ -215,6 +265,11 @@ export const MOTORS = [
   { n: "A3-4T", I: 2.2, d: 4, mx: 6.8, b: 1.00, mi: 7.6, mp: 3.50, lift: 57, mm: 13 },
   { n: "A10-3T", I: 1.9, d: 3, mx: 9.7, b: 1.10, mi: 7.9, mp: 3.78, lift: 85, mm: 13 },
   { n: "1/2A6-2", I: 1.1, d: 2, mx: 8.9, b: 0.30, mi: 15.0, mp: 1.56, lift: 57, mm: 18 },
+  /* booster grades: same propellant, no delay or ejection charge, so a bit
+     lighter. d: 0 marks them; they are never offered as an upper-stage engine. */
+  { n: "A8-0", I: 2.5, d: 0, mx: 10.7, b: 0.70, mi: 14.9, mp: 3.12, lift: 85, mm: 18, booster: true },
+  { n: "B6-0", I: 4.3, d: 0, mx: 12.1, b: 0.90, mi: 18.6, mp: 6.24, lift: 113, mm: 18, booster: true },
+  { n: "C6-0", I: 8.8, d: 0, mx: 14.1, b: 1.90, mi: 24.3, mp: 12.48, lift: 113, mm: 18, booster: true },
   { n: "A8-3", I: 2.5, d: 3, mx: 10.7, b: 0.70, mi: 16.2, mp: 3.12, lift: 85, mm: 18 },
   { n: "A8-5", I: 2.5, d: 5, mx: 10.7, b: 0.70, mi: 17.6, mp: 3.12, lift: 57, mm: 18 },
   { n: "B4-2", I: 5, d: 2, mx: 13.2, b: 1.00, mi: 19.8, mp: 8.33, lift: 113, mm: 18 },
@@ -291,6 +346,16 @@ export const KITS = [
     note: "1,200 ft, 18 mm mount", eng: ["1/2A6-2", "A8-3", "B6-4", "C6-7"] },
   { n: "Crossfire ISX", g: 37, mm: 25, chute: 12, motor: "C6-5", mount: 18, grp: "catalog",
     note: "1,150 ft, 18 mm mount", eng: ["A8-3", "B4-4", "B6-4", "C6-5", "C6-7"] },
+  { n: "Amazon", g: 85, mm: 34, chute: 18, motor: "C6-5", mount: 18, grp: "catalog",
+    note: "600 ft on a C6-5, 18 mm mount, 18 in chute", eng: ["B4-2", "B4-4", "B6-2", "B6-4", "C5-3", "C6-3", "C6-5"] },
+  /* Two stages. g is the sustainer alone; the booster is its own line. Estes
+     does not publish a weight for this kit — 28 g total is what its twin, the
+     Mongoose (same BT-20 tubes, same 22 in, same engines), is listed at, split
+     two thirds sustainer to one third booster. Weigh yours and override it. */
+  { n: "Epic II", g: 19, mm: 19, chute: 12, motor: "C6-7", mount: 18, grp: "catalog", est: true,
+    stages: 2, booster: { g: 9 },
+    rec: "streamer", rateFps: 20, note: "2,600 ft on a C6-0 + C6-7, two stage, 18 mm mount, streamer",
+    eng: ["A8-5", "B6-6", "C6-7"] },
   { n: "Bull Pup 12D", g: 51, mm: 34, chute: 12, motor: "C6-5", mount: 18, grp: "catalog",
     note: "675 ft, 18 mm mount", eng: ["A8-3", "B4-4", "B6-4", "C6-5"] },
   { n: "Gnome", g: 14.2, mm: 14, chute: 12, motor: "A3-4T", mount: 13, grp: "catalog",
@@ -311,6 +376,14 @@ export const KITS = [
   { n: "Leviathan (Pro Series II)", g: 496, mm: 76, chute: 24, motor: "F15-6", mount: 29, cd: 0.55, rod: 48, grp: "catalog",
     note: "Estes lists composite F and G motors for this, which are not in this table \u2014 an F15 is the closest here and comes out over its lift weight" }
 ];
+
+/* The booster Estes pairs with an upper-stage engine: same family, zero delay.
+   C6-7 rides on a C6-0, B6-6 on a B6-0, A8-5 on an A8-0. */
+export function boosterFor(motor) {
+  if (!motor) return null;
+  const fam = motor.n.split('-')[0];
+  return MOTORS.find(m => m.booster && m.mm === motor.mm && m.n.split('-')[0] === fam) || null;
+}
 
 export function motorByName(name) {
   return MOTORS.find(m => m.n === name) || MOTORS[15];
@@ -373,7 +446,19 @@ function baseOpts(S) {
     rho: airDensity(S.elevM, S.tempC, S.pressHPa, S.rh),
     aSound: soundSpeed(S.tempC),
     profile: S.profile || null, rodLen: S.rodM, weathercock: S.wc,
-    tiltDeg: S.tiltDeg, tiltAzim: leanBearing(S)
+    tiltDeg: S.tiltDeg, tiltAzim: leanBearing(S),
+    booster: boosterOpts(S)
+  };
+}
+
+/* S.booster = { g, motor } for a two-stage flight; null otherwise */
+function boosterOpts(S) {
+  const b = S.booster;
+  if (!b || !b.motor) return null;
+  return {
+    dryMass: (b.g || 0) / 1000,
+    impulse: b.motor.I, burn: b.motor.b, maxThrust: b.motor.mx,
+    motorInit: b.motor.mi / 1000, propMass: b.motor.mp / 1000
   };
 }
 
@@ -531,7 +616,7 @@ export function fmt(v, dp) {
 }
 
 if (typeof window !== "undefined") {
-  window.RPPhysics = { G, FT, MPH, IN, OZ, airDensity, soundSpeed, machFactor, delayOf, logBias, fitDragScale, simulate, MOTORS, KITS, motorByName, chuteCdA, predict, offsetLatLon, compassWord, fmt };
+  window.RPPhysics = { G, FT, MPH, IN, OZ, airDensity, soundSpeed, machFactor, delayOf, boosterFor, logBias, fitDragScale, simulate, MOTORS, KITS, motorByName, chuteCdA, predict, offsetLatLon, compassWord, fmt };
 }
 
 
@@ -636,16 +721,27 @@ export function stockSummary() {
 }
 
 /* Apogee with no wind, for the engine charts. Cheap enough to sweep. */
-export function quickApogee(motor, dryG, diaMm, cd, elevM, tempC) {
+export function quickApogee(motor, dryG, diaMm, cd, elevM, tempC, booster) {
+  const T = tempC == null ? 20 : tempC;
   const r = simulate({
+    booster: booster && booster.motor ? boosterOpts({ booster }) : null,
     dryMass: dryG / 1000, dia: diaMm / 1000, cd: cd,
-    impulse: motor.I, burn: motor.b, maxThrust: motor.mx, delay: motor.d,
+    impulse: motor.I, burn: motor.b, maxThrust: motor.mx, delay: delayOf(motor),
     motorInit: motor.mi / 1000, propMass: motor.mp / 1000,
     chuteCdA: 0.05, windSpeed: 0, windFrom: 0, alpha: 0.16,
-    rho: airDensity(elevM || 0, tempC == null ? 20 : tempC),
+    rho: airDensity(elevM || 0, T), aSound: soundSpeed(T),
     rodLen: 0.9144, weathercock: 0.75, tiltDeg: 0, tiltAzim: 0
   });
-  return { apogeeM: r.apogee, rodExit: r.rodExit, lifts: (dryG + motor.mi) <= motor.lift };
+  return {
+    apogeeM: r.apogee, rodExit: r.rodExit,
+    /* on a two-stage the booster does the lifting, so judge the whole stack against it */
+    lifts: booster && booster.motor
+      ? (dryG + motor.mi + (booster.g || 0) + booster.motor.mi) <= booster.motor.lift
+      : (dryG + motor.mi) <= motor.lift,
+    booster: r.booster,
+    /* enough to judge whether the delay suits this airframe */
+    apogeeT: r.apogeeT, ejectT: r.ejectT, deployAltM: r.deployAlt, deploySpeed: r.deploySpeed, maxV: r.maxV
+  };
 }
 
 

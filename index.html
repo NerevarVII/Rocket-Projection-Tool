@@ -144,16 +144,48 @@
               <div style="background: #F6F0E1; border: 1px solid #221F1A; padding: 11px 12px; margin-bottom: 10px;">
                 <div style="display: flex; gap: 10px; align-items: center;">
                   <div style="flex: 1; min-width: 0;">
-                    <div style="font: 600 10px/1 'Saira Condensed', sans-serif; letter-spacing: .18em; color: #6B6152;">FLYING</div>
+                    <div style="font: 600 10px/1 'Saira Condensed', sans-serif; letter-spacing: .18em; color: #6B6152;">1 &middot; ROCKET</div>
                     <div style="font: 700 16px/1.15 'Saira Condensed', sans-serif; margin-top: 3px;">{{ kitName }}</div>
                     <div style="font: 400 11px/1.3 'Space Mono', monospace; color: #6B6152; margin-top: 3px;">{{ kitSpec }}</div>
                   </div>
                   <button onClick="{{ goFleet }}" style="flex: none; padding: 11px 12px 10px; border: 1px solid #221F1A; background: #16303F; color: #F6F0E1; font: 600 11px/1 'Saira Condensed', sans-serif; letter-spacing: .14em; cursor: pointer;">CHANGE</button>
                 </div>
+
+                <div style="margin-top: 11px; padding-top: 10px; border-top: 1px dashed #B6A382;">
+                  <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 7px;">
+                    <div style="font: 600 10px/1 'Saira Condensed', sans-serif; letter-spacing: .18em; color: #6B6152;">ENGINE &middot; {{ mountTxt }}</div>
+                    <div style="display: flex; gap: 9px; font: 600 9px/1 'Saira Condensed', sans-serif; letter-spacing: .08em; color: #6B6152; white-space: nowrap;">
+                      <span><span style="display: inline-block; width: 9px; height: 9px; border: 2px solid #221F1A; vertical-align: -1px; margin-right: 3px;"></span>ESTES PICK</span>
+                      <span><span style="display: inline-block; width: 9px; height: 9px; border: 1px dashed #221F1A; vertical-align: -1px; margin-right: 3px;"></span>FITS</span>
+                      <span><span style="display: inline-block; width: 9px; height: 9px; background: #E8A33D; vertical-align: -1px; margin-right: 3px;"></span>TOO HEAVY</span>
+                    </div>
+                  </div>
+                  <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                    <sc-for list="{{ plotMotors }}" as="m" hint-placeholder-count="6">
+                      <button onClick="{{ m.tap }}" style="padding: 8px 10px 7px; border-width: {{ m.bw }}; border-color: {{ m.bc }}; border-style: {{ m.dash }}; cursor: pointer; font-family: 'Space Mono', monospace; font-size: 12px; font-weight: {{ m.weight }}; background: {{ m.bg }}; color: {{ m.fg }};">{{ m.n }}</button>
+                    </sc-for>
+                  </div>
+
+                  <div style="margin-top: 9px; border: 1px solid #221F1A; border-left: 6px solid {{ ecBar }}; background: #FFFFFF; padding: 9px 11px 10px;">
+                    <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+                      <div style="font: 700 12px/1 'Saira Condensed', sans-serif; letter-spacing: .16em; color: {{ ecBar }};">{{ ecVerdict }}</div>
+                      <div style="font: 700 11px/1 'Space Mono', monospace; color: #6B6152;">{{ ecMotor }}</div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-top: 8px;">
+                      <sc-for list="{{ ecRows }}" as="r" hint-placeholder-count="6">
+                        <div>
+                          <div style="font: 600 9px/1 'Saira Condensed', sans-serif; letter-spacing: .14em; color: #6B6152;">{{ r.k }}</div>
+                          <div style="font: 700 13px/1.2 'Space Mono', monospace; color: {{ r.c }}; margin-top: 2px;">{{ r.v }}</div>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <div style="display: {{ ecTipShow }}; font: 400 11px/1.5 'Saira Condensed', sans-serif; color: #3D3629; margin-top: 8px; padding-top: 7px; border-top: 1px dashed #B6A382; text-wrap: pretty;">{{ ecTip }}</div>
+                  </div>
+                </div>
               </div>
             <div style="background: #E9DFC7; border: 1px solid #B6A382; padding: 12px;">
               <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px;">
-                <div style="font: 700 12px/1 'Saira Condensed', sans-serif; letter-spacing: .22em;">WIND</div>
+                <div style="font: 700 12px/1 'Saira Condensed', sans-serif; letter-spacing: .22em;">2 &middot; WIND</div>
                 <div style="display: flex; align-items: center; gap: 5px;">
                   <span style="font: 400 11px/1 'Saira Condensed', sans-serif; letter-spacing: .1em; color: #6B6152;">FROM</span>
                   <input type="number" min="0" max="359" step="5" value="{{ dirVal }}" onChange="{{ setDir }}" onInput="{{ setDir }}" style="width: 60px; height: 32px; box-sizing: border-box; border: 1px solid #221F1A; background: #FFFFFF; color: #221F1A; text-align: center; font: 700 13px/1 'Space Mono', monospace;">
@@ -162,6 +194,7 @@
                 </div>
               </div>
 
+              <button onClick="{{ faceWind }}" style="width: 100%; margin-bottom: 10px; padding: 10px 6px 9px; border: 1px solid #221F1A; cursor: pointer; font-family: 'Saira Condensed', sans-serif; font-weight: 600; font-size: 10px; letter-spacing: .12em; background: {{ faceBg }}; color: {{ faceFg }};">{{ faceLabel }}</button>
               <div style="display: {{ showWindDial }}; align-items: center; gap: 14px;">
                 <div id="rp-dial" style="position: relative; width: 118px; height: 118px; flex: none; border-radius: 50%; background: #F6F0E1; border: 2px solid #221F1A; touch-action: none; cursor: grab;">
                   <div style="position: absolute; inset: 8px; border-radius: 50%; border: 1px dashed #B6A382;"></div>
@@ -214,7 +247,7 @@
 
             <div style="background: #E9DFC7; border: 1px solid #B6A382; padding: 12px;">
               <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px;">
-                <div style="font: 700 12px/1 'Saira Condensed', sans-serif; letter-spacing: .22em;">LAUNCH ROD</div>
+                <div style="font: 700 12px/1 'Saira Condensed', sans-serif; letter-spacing: .22em;">3 &middot; LAUNCH ROD</div>
                 <div style="font: 700 13px/1 'Space Mono', monospace;">{{ tiltTxt }}</div>
               </div>
               <div id="rp-rod" style="position: relative; height: 226px; border: 1px solid #B6A382; background: #F6F0E1; overflow: hidden; touch-action: none; cursor: grab; user-select: none;">
@@ -297,8 +330,8 @@
                       <button onClick="{{ aimUp }}" style="width: 40px; height: 44px; flex: none; border: 1px solid #221F1A; background: #F6F0E1; font: 700 20px/1 'Space Mono', monospace; color: #221F1A; cursor: pointer;">+</button>
                     </div>
                     <div style="font: 700 12px/1 'Space Mono', monospace; color: #6B6152; text-align: center;">{{ aimWord }} · GREY ARROW BLOWS {{ blowWord }}</div>
+                    <div style="display: {{ showPhoneNow }}; border: 1px dashed #B6A382; background: #F6F0E1; padding: 7px 6px 6px; text-align: center; font: 700 12px/1 'Space Mono', monospace; color: #6B6152;">{{ phoneNowTxt }}</div>
                     <button onClick="{{ pointPhone }}" style="border: 1px solid #221F1A; background: #16303F; color: #F6F0E1; font: 600 10px/1.3 'Saira Condensed', sans-serif; letter-spacing: .1em; cursor: pointer; padding: 9px 6px;">{{ pointLabel }}</button>
-                    <button onClick="{{ toggleFollow }}" style="border: 1px solid #221F1A; font: 600 10px/1.3 'Saira Condensed', sans-serif; letter-spacing: .1em; cursor: pointer; padding: 9px 6px; background: {{ followBg }}; color: {{ followFg }};">{{ followLabel }}</button>
                   </div>
                 </div>
 
@@ -488,6 +521,13 @@
         </div>
 
         <div style="position: absolute; inset: 0; overflow-y: auto; display: {{ showFleet }}; background: #C9AC7E;">
+          <div style="position: sticky; top: 0; z-index: 5; background: #BE2A2E; color: #F6F0E1; border-bottom: 2px solid #221F1A; padding: 9px 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+            <div style="min-width: 0;">
+              <div style="font: 600 9px/1 'Saira Condensed', sans-serif; letter-spacing: .16em; opacity: .8;">TAP A ROCKET, THEN</div>
+              <div style="font: 700 14px/1.1 'Saira Condensed', sans-serif; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ kitLabel }}</div>
+            </div>
+            <button onClick="{{ backToPlot }}" style="flex: none; padding: 10px 13px 9px; border: 1px solid #F6F0E1; background: #16303F; color: #F6F0E1; font: 700 11px/1 'Saira Condensed', sans-serif; letter-spacing: .14em; cursor: pointer;">PLOT IT &rarr;</button>
+          </div>
           <div style="padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 12px;">
             <div style="background: #16303F; border: 2px solid #221F1A; color: #F6F0E1; padding: 12px;">
               <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
@@ -733,7 +773,7 @@ class Component extends DCLogic {
     nkOpen: false, nkErr: null, stock: {}, engMotor: null,
     me: null, meErr: null, fleet: [],
     nk: { n: '', oz: '', mm: '', mount: 18, rec: 'chute', chute: 18, chuteN: 1, rateFps: 20 },
-    compass: 'off', aimLive: false, mark: null, markBusy: false, saved: [],
+    compass: 'off', mark: null, markBusy: false, saved: [],
     phone: false
   };
 
@@ -805,7 +845,7 @@ class Component extends DCLogic {
 
   /* module first; the global is the fallback when this runs from a single bundled file */
   async waitForPhysics() {
-    const BUILD = '10';  /* bump when physics.js changes */
+    const BUILD = '12';  /* bump when physics.js changes */
     if (window.RPPhysics && window.RPPhysics.KITS) return window.RPPhysics;
     try {
       const m = await import('./physics.js?v=' + BUILD);
@@ -953,13 +993,9 @@ class Component extends DCLogic {
       sinAcc = sinAcc * 0.75 + Math.sin(r) * 0.25;
       cosAcc = cosAcc * 0.75 + Math.cos(r) * 0.25;
       const heading = (Math.atan2(sinAcc, cosAcc) * 180 / Math.PI + 360) % 360;
+      /* the heading is displayed live; nothing that drives the plot is written
+         here, so looking around does not redraw the map */
       this.setState({ heading, compass: 'live' });
-      /* aim follows the phone while FOLLOW COMPASS is on — hold the phone along the rod */
-      if (this.state.aimLive) {
-        const h = Math.round(heading);
-        const off = Math.abs(((h - this.state.tiltBrg + 540) % 360) - 180);
-        if (off >= 2) this.set({ tiltBrg: h });
-      }
     };
     window.addEventListener('deviceorientationabsolute', this.onOrient, true);
     window.addEventListener('deviceorientation', this.onOrient, true);
@@ -1473,6 +1509,14 @@ class Component extends DCLogic {
       '<div style="font:700 24px/1 \'Space Mono\',monospace;color:#BE2A2E;transform:translate(-50%,-50%);text-shadow:0 0 3px #F6F0E1,0 0 3px #F6F0E1,0 0 3px #F6F0E1,0 0 3px #F6F0E1">&#10006;</div>' }) });
     cross._rpPlot = true; cross.addTo(marks);
 
+    if (r.nom.booster) {
+      const bl = P.offsetLatLon(lat, lon, r.nom.booster.east, r.nom.booster.north);
+      const bM = L.circleMarker(bl, { radius: 6, color: '#221F1A', weight: 2, fillColor: '#6B6152', fillOpacity: 0.9 });
+      bM._rpPlot = true;
+      bM.bindTooltip('BOOSTER', { permanent: true, direction: 'bottom', className: 'plot-tip', offset: [0, 8] });
+      bM.addTo(marks);
+    }
+
     const apo = P.offsetLatLon(lat, lon, tj[r.apoIdx].x, tj[r.apoIdx].y);
     const apoM = L.circleMarker(apo, { radius: 4, color: '#2C6E58', weight: 2.5, fillColor: '#F6F0E1', fillOpacity: 1 });
     apoM._rpPlot = true;
@@ -1512,8 +1556,16 @@ class Component extends DCLogic {
       dirFrom: this.state.dirFrom,
       elevM: this.state.elevFt / 3.28084, tempC: (this.state.tempF - 32) * 5 / 9, alpha: 0.16,
       pressHPa: this.state.pressHPa, rh: this.state.rh,
-      profile: this.state.profile
+      profile: this.state.profile,
+      booster: this.boosterFor(kit, motor)
     };
+  }
+
+  /* { g, motor } for a two-stage kit, null for everything else */
+  boosterFor(kit, motor) {
+    if (!kit || kit.stages !== 2 || !this.P.boosterFor) return null;
+    const bm = this.P.boosterFor(motor);
+    return bm ? { g: (kit.booster && kit.booster.g) || 0, motor: bm } : null;
   }
 
   /* What the flight log says about this model's bias, and the sim state with
@@ -1575,9 +1627,9 @@ class Component extends DCLogic {
 
   /* apogee in the display unit, no wind, for the engine charts */
   engApogee(motor, grams) {
-    const sp = this.specs();
+    const sp = this.specs(), kit = this.P.KITS[this.state.kitIdx];
     const q = this.P.quickApogee(motor, grams, sp.mm, sp.cd,
-      this.state.elevFt / 3.28084, (this.state.tempF - 32) * 5 / 9);
+      this.state.elevFt / 3.28084, (this.state.tempF - 32) * 5 / 9, this.boosterFor(kit, motor));
     return { ft: this.d(q.apogeeM), lifts: q.lifts, rod: q.rodExit * 3.28084 };
   }
 
@@ -1679,6 +1731,77 @@ class Component extends DCLogic {
       recBusy: false, recMsg: msg, tiltDeg: tilt,
       tiltMode: 'custom', tiltBrg: ((Math.round(S.dirFrom) % 360) + 360) % 360
     }, () => this.recompute());
+  }
+
+  /* ---------- engine check: what this motor does in THIS rocket ----------
+     One card, plain words, for the chips on the plot. Everything here is
+     recomputed from the current rocket and the current weather, so a heavier
+     custom spec or a hot day changes the answer the way it should. */
+  engineCheck() {
+    const P = this.P, st = this.state;
+    if (!P) return null;
+    const m = P.motorByName(st.motorName), kit = P.KITS[st.kitIdx], sp = this.specs();
+    if (!m || !kit) return null;
+    const FT = 3.28084, u = this.u().toLowerCase();
+    const q = this.engApogee(m, sp.g);
+    const nom = st.res && st.res.nom;
+    const bst = this.boosterFor(kit, m);
+    /* on a two-stage the booster lifts the whole stack, so that is what gets judged */
+    const lifter = bst ? bst.motor : m;
+    const gross = sp.g + m.mi + (bst ? bst.g + bst.motor.mi : 0), liftOz = lifter.lift / 28.3495, grossOz = gross / 28.3495;
+    const heavy = gross > lifter.lift;
+    const slow = q.rod < 45;
+    /* delay fit: seconds between motor ejection and the top of the flight, on
+       today's plot if we have one, else in still air */
+    const src = nom || null;
+    const apT = src ? src.apogeeT : null, ejT = src ? src.ejectT : null;
+    const dt = (apT != null && ejT != null) ? ejT - apT : null;
+    const early = dt != null && dt < -1.0, late = dt != null && dt > 1.5;
+    const depSpd = src && src.deploySpeed != null ? src.deploySpeed * FT : null;
+    const hard = depSpd != null && depSpd > 60;
+    const rec = (kit.eng || [kit.motor]).indexOf(m.n) >= 0;
+    /* a sibling with a better delay, same case, same family */
+    const fam = m.n.split('-')[0];
+    const sibs = P.MOTORS.filter(x => x.mm === m.mm && x.n.split('-')[0] === fam && x.n !== m.n)
+      .sort((a, b) => a.d - b.d);
+    const longer = sibs.filter(x => x.d > m.d)[0], shorter = sibs.filter(x => x.d < m.d).slice(-1)[0];
+
+    let verdict, bar, tip = '';
+    if (heavy) {
+      verdict = 'TOO HEAVY FOR THIS ENGINE'; bar = '#C8442F';
+      tip = 'Loaded weight ' + grossOz.toFixed(1) + ' oz is over the ' + liftOz.toFixed(1) + ' oz this engine is rated to lift. ' +
+        'It may leave the rod too slow to fly straight. Pick a bigger engine or a lighter rocket.';
+    } else if (slow) {
+      verdict = 'SLOW OFF THE ROD'; bar = '#E8A33D';
+      tip = 'Leaves the rod at ' + Math.round(q.rod) + ' ft/s; under 45 the fins have little grip and the wind pushes it over. ' +
+        'Fine on a still day. On a breezy one, a longer rod or the next engine up.';
+    } else if (early) {
+      verdict = 'CHUTE POPS EARLY'; bar = '#E8A33D';
+      tip = 'Ejection comes ' + Math.abs(dt).toFixed(1) + ' s before the top, while it is still climbing fast \u2014 hard on the chute and ' +
+        'it throws away height.' + (longer ? ' Try the ' + longer.n + '.' : '');
+    } else if (late || hard) {
+      verdict = 'CHUTE OPENS LATE'; bar = '#E8A33D';
+      tip = 'Ejection comes ' + (dt != null ? dt.toFixed(1) : '?') + ' s after the top, so it is already falling' +
+        (depSpd != null ? ' at ' + Math.round(depSpd) + ' ft/s' : '') + ' when the chute hits the air.' +
+        (shorter ? ' Try the ' + shorter.n + '.' : '');
+    } else {
+      verdict = rec ? 'GOOD FIT \u00B7 ESTES PICK' : 'GOOD FIT'; bar = '#2C6E58';
+      if (!rec) tip = 'Not on the Estes list for this kit, but it lifts it, clears the rod cleanly and the delay lands near the top. ';
+      if (dt != null) tip += 'Chute opens ' + Math.abs(dt).toFixed(1) + ' s ' + (dt <= 0 ? 'before' : 'after') + ' the top.';
+    }
+
+    const rows = [
+      { k: 'APOGEE, NO WIND', v: fmtNum(q.ft) + ' ' + u, c: '#221F1A' },
+      { k: 'APOGEE TODAY', v: nom ? fmtNum(this.d(nom.apogee)) + ' ' + u : '\u2014', c: '#221F1A' },
+      { k: 'OFF THE ROD', v: Math.round(q.rod) + ' ft/s', c: slow ? '#96620A' : '#221F1A' },
+      { k: 'LOADED / RATED', v: grossOz.toFixed(1) + ' / ' + liftOz.toFixed(1) + ' oz', c: heavy ? '#C8442F' : '#221F1A' },
+      { k: 'EJECTS VS TOP', v: dt == null ? '\u2014' : (dt <= 0 ? Math.abs(dt).toFixed(1) + ' s early' : dt.toFixed(1) + ' s late'), c: (early || late) ? '#96620A' : '#221F1A' },
+      { k: 'IMPULSE', v: m.I + ' N\u00B7s \u00B7 ' + (m.est ? 'packet figure' : 'NAR cert') + (isFinite(m.dm) ? ' \u00B7 delay ' + m.dm + ' s measured' : ''), c: '#221F1A' }
+    ];
+    if (bst) rows.splice(3, 0, { k: 'BOOSTER', v: bst.motor.n + ' \u00B7 lifts the stack', c: '#221F1A' });
+    return { verdict, bar, tip, rows, name: bst ? bst.motor.n + ' + ' + m.n : m.n };
+
+    function fmtNum(v) { return P.fmt(v); }
   }
 
   d(m) { return this.us() ? m * 3.28084 : m; }
@@ -1817,7 +1940,7 @@ class Component extends DCLogic {
       showMotors: st.kitIdx === i ? 'flex' : 'none',
       tap: () => this.set({ kitIdx: i, motorName: k.motor, spec: null }),
       /* everything that fits the mount, not just the recommended few */
-      motors: P.MOTORS.filter(m => m.mm === (k.mount || 18)).map(m => {
+      motors: P.MOTORS.filter(m => m.mm === (k.mount || 18) && !m.booster).map(m => {
         const sel = st.kitIdx === i && st.motorName === m.n;
         const rec = (k.eng || [k.motor]).indexOf(m.n) >= 0;
         const gross = (st.kitIdx === i && sp ? sp.g : k.g) + m.mi;
@@ -1947,7 +2070,12 @@ class Component extends DCLogic {
       turnWord: turn,
       splitLine: res && nom.deployAlt != null
         ? 'Chute opens at ' + fmt(this.d(nom.deployAlt)) + ' ' + this.u().toLowerCase() +
-          ', then it drifts for ' + nom.descentTime.toFixed(0) + ' s. Whole flight ' + nom.flightTime.toFixed(0) + ' s.'
+          ', then it drifts for ' + nom.descentTime.toFixed(0) + ' s. Whole flight ' + nom.flightTime.toFixed(0) + ' s.' +
+          (nom.booster
+            ? ' Booster drops off at ' + fmt(this.d(nom.booster.sepAlt)) + ' ' + this.u().toLowerCase() +
+              ' and tumbles down about ' + fmt(this.d(nom.booster.drift)) + ' ' + this.u().toLowerCase() +
+              ' out at ' + Math.round(nom.booster.bearing) + '\u00B0 \u2014 the grey dot.'
+            : '')
         : 'Running the flight…',
       runNote: res ? this.CLOUD + ' RUNS · ' + fmt(this.d(nom.apogee)) + ' ' + this.u() + ' APOGEE' : 'SIMULATING…',
       cloudN: String(this.CLOUD),
@@ -1961,16 +2089,61 @@ class Component extends DCLogic {
 
       kitName: kit ? kit.n : '—',
       kitLabel: kit ? kit.n.toUpperCase() + ' · ' + st.motorName : '',
-      kitSpec: kit ? (kit.g / 28.3495).toFixed(1) + ' oz · ' + kit.mm + ' mm · ' +
-        (kit.rec === 'streamer' ? 'streamer' : kit.chute + ' in chute') : '',
+      kitSpec: kit ? (kit.g / 28.3495).toFixed(1) + ' oz' +
+        (kit.stages === 2 ? ' + ' + ((kit.booster && kit.booster.g || 0) / 28.3495).toFixed(1) + ' oz booster' : '') +
+        ' · ' + kit.mm + ' mm · ' + (kit.rec === 'streamer' ? 'streamer' : kit.chute + ' in chute') +
+        (kit.stages === 2 ? ' · two stage' : '') + (kit.est ? ' · weight estimated, weigh yours' : '') : '',
+      backToPlot: () => this.goTab('plot'),
+
+      /* ---- engine chips on the plot: same language as the fleet cards, with a key ---- */
+      plotMotors: P && kit ? P.MOTORS.filter(m => m.mm === mountMm && !m.booster).map(m => {
+        const sel = st.motorName === m.n;
+        const rec = (kit.eng || [kit.motor]).indexOf(m.n) >= 0;
+        const bst = this.boosterFor(kit, m);
+        const heavy = bst
+          ? (sp ? sp.g : kit.g) + m.mi + bst.g + bst.motor.mi > bst.motor.lift
+          : (sp ? sp.g : kit.g) + m.mi > m.lift;
+        return {
+          n: bst ? bst.motor.n + ' + ' + m.n : m.n,
+          bg: sel ? red : heavy ? '#F6E9C7' : '#FFFFFF',
+          fg: sel ? cream : heavy ? '#96620A' : ink,
+          bc: sel ? red : heavy ? '#E8A33D' : ink,
+          bw: rec ? '2px' : '1px',
+          dash: rec ? 'solid' : 'dashed',
+          weight: rec ? '700' : '400',
+          tap: () => this.set({ motorName: m.n })
+        };
+      }) : [],
+      ...(() => {
+        const ec = P ? this.engineCheck() : null;
+        return {
+          ecBar: ec ? ec.bar : '#B6A382',
+          ecVerdict: ec ? ec.verdict : '',
+          ecMotor: ec ? ec.name : '',
+          ecRows: ec ? ec.rows : [],
+          ecTipShow: ec && ec.tip ? 'block' : 'none',
+          ecTip: ec ? ec.tip : ''
+        };
+      })(),
+
+      /* ---- wind from the phone: stand facing into the wind, tap once ---- */
+      faceLabel: st.compass === 'live' ? 'FACING INTO THE WIND? SET FROM ' + Math.round(st.heading) + '\u00B0 ' + word(st.heading)
+        : st.compass === 'ask' ? 'TURN ON PHONE COMPASS TO SET WIND'
+        : 'PHONE COMPASS UNAVAILABLE \u00B7 USE THE DIAL',
+      faceBg: st.compass === 'live' ? navy : '#F6F0E1',
+      faceFg: st.compass === 'live' ? cream : (st.compass === 'ask' ? ink : '#6B6152'),
+      faceWind: () => {
+        if (st.compass === 'live') { this.set({ dirFrom: Math.round(st.heading) % 360 }); return; }
+        if (st.compass === 'ask' || st.compass === 'off') this.startCompass(true);
+      },
       /* ---- engines page ---- */
       showEngines: st.tab === 'engines' ? 'block' : 'none',
       stockCount: String(P && P.stockSummary ? P.stockSummary().count : 0),
       stockImpulse: P && P.stockSummary ? P.stockSummary().impulse.toFixed(0) + ' N\u00B7s' : '\u2014',
       engGroups: P && st.tab === 'engines' ? [13, 18, 24, 29].map(mm => ({
         head: mm + ' MM',
-        sub: P.MOTORS.filter(m => m.mm === mm).length + ' engines',
-        rows: P.MOTORS.filter(m => m.mm === mm).map(m => {
+        sub: P.MOTORS.filter(m => m.mm === mm && !m.booster).length + ' engines',
+        rows: P.MOTORS.filter(m => m.mm === mm && !m.booster).map(m => {
           const have = st.stock[m.n] || 0;
           const sel = (st.engMotor || st.motorName) === m.n;
           return {
@@ -2021,7 +2194,7 @@ class Component extends DCLogic {
       })() : [],
       engFitRows: P && st.tab === 'engines' ? (() => {
         const kit = P.KITS[st.kitIdx], sp = this.specs();
-        const fit = P.MOTORS.filter(m => m.mm === (kit.mount || 18));
+        const fit = P.MOTORS.filter(m => m.mm === (kit.mount || 18) && !m.booster);
         const runs = fit.map(m => {
           const r = this.engApogee(m, sp.g);
           return { n: m.n, ft: r.ft, lifts: r.lifts, rod: r.rod };
@@ -2064,7 +2237,7 @@ class Component extends DCLogic {
       nkSave: () => this.saveMyKit(),
       nkMounts: [13, 18, 24, 29].map(mm => ({
         label: mm + ' MM',
-        sub: P ? P.MOTORS.filter(m => m.mm === mm).length + ' engines' : '',
+        sub: P ? P.MOTORS.filter(m => m.mm === mm && !m.booster).length + ' engines' : '',
         bg: st.nk.mount === mm ? navy : '#F6F0E1',
         fg: st.nk.mount === mm ? cream : ink,
         tap: () => this.nkSet({ mount: mm })
@@ -2213,18 +2386,16 @@ class Component extends DCLogic {
       },
       aimUp: () => this.set({ tiltBrg: (Math.round(st.tiltBrg) + 5) % 360 }),
       aimDown: () => this.set({ tiltBrg: (Math.round(st.tiltBrg) - 5 + 360) % 360 }),
-      pointLabel: st.compass === 'live' ? 'POINT MY PHONE THAT WAY' : 'USE HEADING ' + Math.round(st.heading) + '°',
-      pointPhone: () => this.set({ tiltBrg: Math.round(st.heading), aimLive: false }),
-      followLabel: st.aimLive ? 'FOLLOWING PHONE · TAP TO LOCK'
-        : st.compass === 'live' ? 'FOLLOW MY PHONE COMPASS'
+      /* The phone's heading is shown live but written only on the tap, so
+         looking around while you line up does not redraw the plot. */
+      showPhoneNow: st.compass === 'live' ? 'block' : 'none',
+      phoneNowTxt: 'PHONE NOW ' + Math.round(st.heading) + '\u00B0 ' + word(st.heading),
+      pointLabel: st.compass === 'live' ? 'LOCK NOSE TO PHONE HEADING'
         : st.compass === 'ask' ? 'TURN ON PHONE COMPASS'
         : 'PHONE COMPASS UNAVAILABLE',
-      followBg: st.aimLive ? '#2C6E58' : '#F6F0E1',
-      followFg: st.aimLive ? cream : ink,
-      toggleFollow: () => {
-        if (st.aimLive) { this.setState({ aimLive: false }); return; }
+      pointPhone: () => {
+        if (st.compass === 'live') { this.set({ tiltBrg: Math.round(st.heading) % 360, tiltDeg: st.tiltDeg || 8 }); return; }
         if (st.compass !== 'live') this.startCompass(true);
-        this.setState({ aimLive: true, tiltDeg: st.tiltDeg || 8 }, () => this.recompute());
       },
       setTilt: e => this.set({ tiltDeg: parseInt(e.target.value, 10) }),
 
