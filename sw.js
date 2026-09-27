@@ -24,7 +24,7 @@
 
    Bump VERSION when you deploy; the old caches are dropped on activate. */
 
-const VERSION = 'rp-13';
+const VERSION = 'rp-14';
 const SHELL = VERSION + '-shell';
 const LIBS = VERSION + '-libs';
 const TILES = 'rp-tiles';               /* survives versions; tiles don't change */

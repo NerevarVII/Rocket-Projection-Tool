@@ -171,7 +171,7 @@
                   <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 7px;">
                     <div style="font: 600 10px/1 'Saira Condensed', sans-serif; letter-spacing: .18em; color: #6B6152;">ENGINE &middot; {{ mountTxt }}</div>
                     <div style="display: flex; gap: 9px; font: 600 9px/1 'Saira Condensed', sans-serif; letter-spacing: .08em; color: #6B6152; white-space: nowrap;">
-                      <span><span style="display: inline-block; width: 9px; height: 9px; border: 2px solid #221F1A; vertical-align: -1px; margin-right: 3px;"></span>ESTES PICK</span>
+                      <span><span style="display: inline-block; width: 9px; height: 9px; border: 2px solid #221F1A; vertical-align: -1px; margin-right: 3px;"></span>ON THE BOX</span>
                       <span><span style="display: inline-block; width: 9px; height: 9px; border: 1px dashed #221F1A; vertical-align: -1px; margin-right: 3px;"></span>FITS</span>
                       <span><span style="display: inline-block; width: 9px; height: 9px; background: #E8A33D; vertical-align: -1px; margin-right: 3px;"></span>TOO HEAVY</span>
                     </div>
@@ -1776,8 +1776,23 @@ class Component extends DCLogic {
     /* on a two-stage the booster lifts the whole stack, so that is what gets judged */
     const lifter = bst ? bst.motor : m;
     const gross = sp.g + m.mi + (bst ? bst.g + bst.motor.mi : 0), liftOz = lifter.lift / 28.3495, grossOz = gross / 28.3495;
-    const heavy = gross > lifter.lift;
-    const slow = q.rod < 45;
+    /* Estes' lift ratings are a conservative guideline, and the list on the
+       box is what they actually flew. Where the two disagree — the Amazon on
+       a B4-4 is 3.7 oz loaded against a 3.5 oz rating, and it's on the box —
+       the box wins. So a listed engine is never called too heavy or too slow
+       here; the numbers are still shown, and the wind is still judged. */
+    const rec = (kit.eng || [kit.motor]).indexOf(m.n) >= 0;
+    const overBy = gross / lifter.lift - 1;
+    const heavy = !rec && overBy > 0.10;
+    const tight = overBy > 0;
+    /* what matters off the rod is the angle the wind puts on it: rod-height
+       wind over exit speed. Past about 15 degrees the fins are steering a
+       rocket that is barely moving. 30 ft/s is the floor with no wind at all. */
+    const windRod = st.windMph * 1.46667 * Math.pow(0.2, 0.16);   /* ft/s at ~2 m */
+    const aoa = Math.atan2(windRod, Math.max(1, q.rod)) * 180 / Math.PI;
+    const crawl = q.rod < 30;
+    const grab = aoa > 15;
+    const slow = crawl || (!rec && q.rod < 45);
     /* delay fit: seconds between motor ejection and the top of the flight, on
        today's plot if we have one, else in still air */
     const src = nom || null;
@@ -1786,7 +1801,6 @@ class Component extends DCLogic {
     const early = dt != null && dt < -1.0, late = dt != null && dt > 1.5;
     const depSpd = src && src.deploySpeed != null ? src.deploySpeed * FT : null;
     const hard = depSpd != null && depSpd > 60;
-    const rec = (kit.eng || [kit.motor]).indexOf(m.n) >= 0;
     /* a sibling with a better delay, same case, same family */
     const fam = m.n.split('-')[0];
     const sibs = P.MOTORS.filter(x => x.mm === m.mm && x.n.split('-')[0] === fam && x.n !== m.n)
@@ -1794,14 +1808,27 @@ class Component extends DCLogic {
     const longer = sibs.filter(x => x.d > m.d)[0], shorter = sibs.filter(x => x.d < m.d).slice(-1)[0];
 
     let verdict, bar, tip = '';
+    const onBox = rec ? ' \u00B7 ON THE BOX' : '';
     if (heavy) {
       verdict = 'TOO HEAVY FOR THIS ENGINE'; bar = '#C8442F';
-      tip = 'Loaded weight ' + grossOz.toFixed(1) + ' oz is over the ' + liftOz.toFixed(1) + ' oz this engine is rated to lift. ' +
-        'It may leave the rod too slow to fly straight. Pick a bigger engine or a lighter rocket.';
+      tip = 'Loaded weight ' + grossOz.toFixed(1) + ' oz is ' + Math.round(overBy * 100) + '% over the ' + liftOz.toFixed(1) +
+        ' oz this engine is rated to lift, and Estes does not list it for this kit. Pick a bigger engine or a lighter rocket.';
+    } else if (crawl) {
+      verdict = 'CRAWLS OFF THE ROD' + onBox; bar = rec ? '#E8A33D' : '#C8442F';
+      tip = 'Leaves the rod at ' + Math.round(q.rod) + ' ft/s. Under 30 the fins have almost no grip until well past the rod. ' +
+        (rec ? 'Estes lists it, so it flies \u2014 but use the longest rod you have and a dead-calm day.' : 'A longer rod, or the next engine up.');
+    } else if (grab) {
+      verdict = 'TODAY\u2019S WIND WILL GRAB IT' + onBox; bar = '#E8A33D';
+      tip = 'At ' + st.windMph + ' mph the wind meets it at ' + Math.round(aoa) + '\u00B0 as it leaves the rod doing ' + Math.round(q.rod) + ' ft/s. ' +
+        'It will weathercock hard \u2014 expect it to arc into the wind and lose height. Fine on a calm day' +
+        (rec ? '.' : '; today, the next engine up.');
     } else if (slow) {
       verdict = 'SLOW OFF THE ROD'; bar = '#E8A33D';
-      tip = 'Leaves the rod at ' + Math.round(q.rod) + ' ft/s; under 45 the fins have little grip and the wind pushes it over. ' +
-        'Fine on a still day. On a breezy one, a longer rod or the next engine up.';
+      tip = 'Leaves the rod at ' + Math.round(q.rod) + ' ft/s, and Estes does not list it for this kit. Fine still; in a breeze use a longer rod or the next engine up.';
+    } else if (tight && !rec) {
+      verdict = 'OVER THE LIFT RATING'; bar = '#E8A33D';
+      tip = 'Loaded ' + grossOz.toFixed(1) + ' oz against a ' + liftOz.toFixed(1) + ' oz rating, and not on the Estes list. It clears the rod at ' +
+        Math.round(q.rod) + ' ft/s, so it should fly, but there is no margin.';
     } else if (early) {
       verdict = 'CHUTE POPS EARLY'; bar = '#E8A33D';
       tip = 'Ejection comes ' + Math.abs(dt).toFixed(1) + ' s before the top, while it is still climbing fast \u2014 hard on the chute and ' +
@@ -1812,16 +1839,17 @@ class Component extends DCLogic {
         (depSpd != null ? ' at ' + Math.round(depSpd) + ' ft/s' : '') + ' when the chute hits the air.' +
         (shorter ? ' Try the ' + shorter.n + '.' : '');
     } else {
-      verdict = rec ? 'GOOD FIT \u00B7 ESTES PICK' : 'GOOD FIT'; bar = '#2C6E58';
+      verdict = rec ? 'GOOD FIT \u00B7 ON THE BOX' : 'GOOD FIT'; bar = '#2C6E58';
       if (!rec) tip = 'Not on the Estes list for this kit, but it lifts it, clears the rod cleanly and the delay lands near the top. ';
+      if (rec && tight) tip = 'Loaded ' + grossOz.toFixed(1) + ' oz against a ' + liftOz.toFixed(1) + ' oz rating \u2014 over on paper, but Estes lists it, and their list is what they flew. ';
       if (dt != null) tip += 'Chute opens ' + Math.abs(dt).toFixed(1) + ' s ' + (dt <= 0 ? 'before' : 'after') + ' the top.';
     }
 
     const rows = [
       { k: 'APOGEE, NO WIND', v: fmtNum(q.ft) + ' ' + u, c: '#221F1A' },
       { k: 'APOGEE TODAY', v: nom ? fmtNum(this.d(nom.apogee)) + ' ' + u : '\u2014', c: '#221F1A' },
-      { k: 'OFF THE ROD', v: Math.round(q.rod) + ' ft/s', c: slow ? '#96620A' : '#221F1A' },
-      { k: 'LOADED / RATED', v: grossOz.toFixed(1) + ' / ' + liftOz.toFixed(1) + ' oz', c: heavy ? '#C8442F' : '#221F1A' },
+      { k: 'OFF THE ROD', v: Math.round(q.rod) + ' ft/s' + (st.windMph > 0 ? ' \u00B7 wind at ' + Math.round(aoa) + '\u00B0' : ''), c: (crawl || grab) ? '#96620A' : '#221F1A' },
+      { k: 'LOADED / RATED', v: grossOz.toFixed(1) + ' / ' + liftOz.toFixed(1) + ' oz', c: heavy ? '#C8442F' : tight ? '#96620A' : '#221F1A' },
       { k: 'EJECTS VS TOP', v: dt == null ? '\u2014' : (dt <= 0 ? Math.abs(dt).toFixed(1) + ' s early' : dt.toFixed(1) + ' s late'), c: (early || late) ? '#96620A' : '#221F1A' },
       { k: 'IMPULSE', v: m.I + ' N\u00B7s \u00B7 ' + (m.est ? 'packet figure' : 'NAR cert') + (isFinite(m.dm) ? ' \u00B7 delay ' + m.dm + ' s measured' : ''), c: '#221F1A' }
     ];
@@ -1971,7 +1999,7 @@ class Component extends DCLogic {
         const sel = st.kitIdx === i && st.motorName === m.n;
         const rec = (k.eng || [k.motor]).indexOf(m.n) >= 0;
         const gross = (st.kitIdx === i && sp ? sp.g : k.g) + m.mi;
-        const heavy = gross > m.lift;
+        const heavy = !rec && gross > m.lift * 1.10;
         return {
           n: m.n,
           bg: sel ? red : 'transparent',
@@ -2127,9 +2155,9 @@ class Component extends DCLogic {
         const sel = st.motorName === m.n;
         const rec = (kit.eng || [kit.motor]).indexOf(m.n) >= 0;
         const bst = this.boosterFor(kit, m);
-        const heavy = bst
-          ? (sp ? sp.g : kit.g) + m.mi + bst.g + bst.motor.mi > bst.motor.lift
-          : (sp ? sp.g : kit.g) + m.mi > m.lift;
+        const heavy = !rec && (bst
+          ? (sp ? sp.g : kit.g) + m.mi + bst.g + bst.motor.mi > bst.motor.lift * 1.10
+          : (sp ? sp.g : kit.g) + m.mi > m.lift * 1.10);
         return {
           n: bst ? bst.motor.n + ' + ' + m.n : m.n,
           bg: sel ? red : heavy ? '#F6E9C7' : '#FFFFFF',
@@ -2316,12 +2344,15 @@ class Component extends DCLogic {
           : 'No canopy: it comes down ballistic. Set the rate you have measured, and stand well clear.')
         : '',
       mountTxt: mountMm + ' MM MOUNT',
-      motorLegend: 'Every ' + mountMm + ' mm motor fits this mount. Bold outline is an Estes recommendation for the kit; ' +
-        'dashed still fits. Amber means the loaded rocket is heavier than that motor is rated to lift.',
+      motorLegend: 'Every ' + mountMm + ' mm motor fits this mount. Bold outline is on the box for this kit; ' +
+        'dashed still fits. Amber means the loaded rocket is well over what that motor is rated to lift and Estes does not list it.',
       showLiftWarn: liftMotor && grossG > liftMotor.lift ? 'block' : 'none',
       liftWarnTxt: liftMotor
         ? 'Loaded weight ' + (grossG / 28.3495).toFixed(1) + ' oz is over the ' + st.motorName +
-          '\u2019s rated lift of ' + (liftMotor.lift / 28.3495).toFixed(1) + ' oz. Expect a low, slow boost — fine to try, but watch the rod exit speed.'
+          '\u2019s rated lift of ' + (liftMotor.lift / 28.3495).toFixed(1) + ' oz' +
+          ((kit && (kit.eng || [kit.motor]).indexOf(st.motorName) >= 0)
+            ? ' \u2014 on paper. Estes lists this engine for the kit, and the box is what they flew; the ratings are a conservative guide. Expect a low, slow boost.'
+            : '. Expect a low, slow boost \u2014 fine to try, but watch the rod exit speed in the engine check.')
         : '',
       resetLabel: st.spec ? 'RESET TO KIT' : 'KIT VALUES',
       resetBg: st.spec ? red : 'transparent',
