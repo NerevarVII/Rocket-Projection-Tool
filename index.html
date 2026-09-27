@@ -914,13 +914,18 @@ class Component extends DCLogic {
       /* low-pass the gravity vector; the hand shake is far above 3 Hz */
       const k = have ? 0.12 : 1;
       gx += (a.x - gx) * k; gy += (a.y - gy) * k; gz += (a.z - gz) * k; have = true;
-      const mag = Math.hypot(gx, gy, gz) || 1;
       const raw = Math.hypot(a.x, a.y, a.z);
-      const tilt = Math.acos(Math.min(1, Math.abs(gy) / mag)) * 180 / Math.PI;
+      /* Front-to-back lean only. The rod's angle is how far the phone's long
+         axis pitches away from vertical in the screen's own plane, so it comes
+         from the Y and Z components of gravity alone. Side-to-side (X) is the
+         phone being rolled on the rod, which is not the rod leaning — it is
+         reported separately so you can square the phone up. */
+      const tilt = Math.atan2(Math.abs(gz), Math.abs(gy)) * 180 / Math.PI;
+      const roll = Math.atan2(Math.abs(gx), Math.hypot(gy, gz)) * 180 / Math.PI;
       const now = Date.now();
       if (now - last < 120) return;             /* 8 Hz is plenty for a readout */
       last = now;
-      this.setState({ rodChk: { tilt, steady: Math.abs(raw - 9.81) < 0.6 } });
+      this.setState({ rodChk: { tilt, roll, steady: Math.abs(raw - 9.81) < 0.6 } });
     };
     window.addEventListener('devicemotion', this.onMotion, true);
   }
@@ -2311,6 +2316,7 @@ class Component extends DCLogic {
         if (!live) advice = '';
         else if (ph == null) advice = 'WAITING FOR THE SENSOR\u2026';
         else if (!rc.steady) advice = 'HOLD IT STILL AGAINST THE ROD';
+        else if (rc.roll > 12) advice = 'PHONE IS ROLLED ' + Math.round(rc.roll) + '\u00B0 \u2014 LAY IT FLAT ON THE ROD';
         else {
           const parts = [];
           if (!okA) parts.push(dA > 0 ? 'LEAN ' + Math.round(dA) + '\u00B0 MORE' : 'STAND IT UP ' + Math.round(-dA) + '\u00B0');
@@ -2318,7 +2324,7 @@ class Component extends DCLogic {
           else if (!okB) parts.push('SWING THE LEAN ' + Math.abs(Math.round(dB)) + '\u00B0 ' + (dB > 0 ? 'RIGHT' : 'LEFT'));
           advice = parts.length ? parts.join(' \u00B7 ') : 'ON TARGET \u2014 LEAVE IT THERE';
         }
-        const bar = !live || ph == null ? '#B6A382' : onTarget && rc.steady ? '#2C6E58' : '#96620A';
+        const bar = !live || ph == null ? '#B6A382' : onTarget && rc.steady && !(rc.roll > 12) ? '#2C6E58' : '#96620A';
         return {
           rcState: rc && rc.fail ? 'NO SENSOR' : live ? 'LIVE' : '',
           rcStateFg: live ? '#2C6E58' : '#96620A',
@@ -2337,7 +2343,7 @@ class Component extends DCLogic {
           rcAdopt: () => this.adoptRod(),
           rcAdoptLabel: 'MAKE THE SETTINGS MATCH THE ROD (' + (ph != null ? Math.round(ph) : 0) + '\u00B0' + (phB != null ? ' \u00B7 ' + phB + '\u00B0' : '') + ')',
           rcHint: rc && rc.fail ? rc.fail
-            : 'Lay the back of the phone along the rod, top end toward the nose, and read it off. Nothing here changes the plot \u2014 it only tells you how far the rod is from what is set. The dashed button is the exception, and it says so.'
+            : 'Lay the back of the phone flat along the rod, top end toward the nose. Only the front-to-back lean counts; tipping the phone sideways is ignored, and if it is rolled on the rod it will say so. Nothing here changes the plot \u2014 the dashed button is the one exception, and it says so.'
         };
       })(),
       tiltTxt: st.tiltDeg === 0 ? 'STRAIGHT UP'
