@@ -19,6 +19,22 @@
      a component that has already mounted a map. -->
 <script>window.__resources = {};</script>
 
+<!-- installable + offline. The service worker keeps the app, its libraries and
+     every map tile you have looked at, so it opens at a pad with no signal. -->
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Recovery Plot">
+<meta name="theme-color" content="#BE2A2E">
+<script>
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('./sw.js').catch(function () {});
+    });
+  }
+</script>
+
 <script src="./support.js"></script>
 </head>
 <body>
@@ -778,7 +794,7 @@ class Component extends DCLogic {
     tiltDeg: 0, tiltMode: 'custom', tiltBrg: 270, rodChk: null,
     res: null, heading: 262, showWhy: false, runs: 0, profile: null,
     pad: [46.76097, -96.92830], padName: 'HOME PAD', padBusy: false, moveMode: false, padMsg: null,
-    tempF: 68, elevFt: 900, pressHPa: null, rh: null, wx: 'manual', wxAt: null,
+    tempF: 68, elevFt: 900, pressHPa: null, rh: null, wx: 'manual', wxAt: null, online: typeof navigator === 'undefined' ? true : navigator.onLine !== false,
     layer: 'street', tileNote: null,
     spec: null, recBusy: false, recMsg: null,
     nkOpen: false, nkErr: null, stock: {}, engMotor: null,
@@ -807,6 +823,12 @@ class Component extends DCLogic {
     { u: 'https://tiles.stadiamaps.com/tiles/alidade_satellite/{z}/{x}/{y}.jpg', o: { maxZoom: 20, maxNativeZoom: 18 } }
   ];
   SATKEY = 'rp.satsource.v1';
+  WXKEY = 'rp.lastwx.v1';
+
+  hoursAgo(ms) {
+    const h = (Date.now() - ms) / 3600000;
+    return h < 1 ? Math.round(h * 60) + ' MIN' : h < 48 ? h.toFixed(h < 10 ? 1 : 0) + ' H' : Math.round(h / 24) + ' D';
+  }
 
   LOG = [
     { date: 'SEP 05', kit: 'Green Eggs (one egg)', motor: 'D12-5', pred: 402, act: 366,
@@ -833,6 +855,9 @@ class Component extends DCLogic {
     this.syncViewport();
     this.onResize = () => this.syncViewport();
     window.addEventListener('resize', this.onResize);
+    this.onNet = () => this.setState({ online: navigator.onLine !== false });
+    window.addEventListener('online', this.onNet);
+    window.addEventListener('offline', this.onNet);
     this.recompute();
     this.initMap();
     this.fetchWeather(false);   /* no GPS prompt on load — GET WIND asks for it */
@@ -876,6 +901,8 @@ class Component extends DCLogic {
     clearInterval(this.hdTimer);
     clearTimeout(this.pending);
     window.removeEventListener('resize', this.onResize);
+    window.removeEventListener('online', this.onNet);
+    window.removeEventListener('offline', this.onNet);
     this.stopWalkFix();
     this.stopRodCheck();
     if (this.onOrient) {
@@ -1156,9 +1183,23 @@ class Component extends DCLogic {
       if (at) from = 'HERE';
     }
     if (!at) at = this.state.pad;
-    const w = await this.askWind(at[0], at[1]);
+    let w = await this.askWind(at[0], at[1]);
+    let stale = false;
+    if (w) {
+      try { localStorage.setItem(this.WXKEY, JSON.stringify({ at, w, saved: Date.now() })); } catch (e) {}
+    } else {
+      /* no signal: the last forecast we got is better than a guess, as long as
+         it is labelled for what it is */
+      try {
+        const keep = JSON.parse(localStorage.getItem(this.WXKEY) || 'null');
+        if (keep && keep.w && Date.now() - keep.saved < 36 * 3600 * 1000) {
+          w = keep.w; stale = true;
+          w.src = 'LAST KNOWN \u00B7 ' + this.hoursAgo(keep.saved) + ' OLD';
+        }
+      } catch (e) {}
+    }
     if (!w) { this.setState({ wx: 'failed' }); return; }
-    const age = this.ageOf(w.obs);
+    const age = stale ? null : this.ageOf(w.obs);
     this.setState({
       windMph: Math.round(Math.max(0, w.wind)),
       gustMph: Math.round(Math.max(w.gust, w.wind)),
@@ -2425,9 +2466,9 @@ class Component extends DCLogic {
       compassDot: st.compass === 'live' ? '#7FD1A8' : '#E8A33D',
       compassTap: () => st.compass === 'live' ? null : this.startCompass(true),
 
-      wxLabel: st.wx === 'live'
+      wxLabel: (st.online ? '' : 'NO SIGNAL · ') + (st.wx === 'live'
         ? (st.wxFrom === 'HERE' ? 'AT MY LOCATION' : 'AT THE PAD') + ' · ' + (st.wxSrc || '')
-        : wxLabel,
+        : wxLabel),
       wxTxt: st.tempF + '°F · ELEV ' + fmt(st.elevFt) + ' FT' +
         (st.wx === 'live' && st.wxAge != null
           ? ' · ' + (st.wxAge < 1 ? 'JUST NOW' : st.wxAge + ' MIN AGO')
@@ -2575,7 +2616,15 @@ class Component extends DCLogic {
     btn('CLEAR APP DATA AND RELOAD', 'transparent', function () {
       try { Object.keys(localStorage).forEach(function (k) {
         if (k.indexOf('rp.') === 0) localStorage.removeItem(k); }); } catch (e) {}
-      location.replace(location.pathname + '?cb=' + Date.now());
+      var done = function () { location.replace(location.pathname + '?cb=' + Date.now()); };
+      /* the offline copy too, otherwise a bad build can come straight back */
+      if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+        navigator.serviceWorker.getRegistrations().then(function (rs) {
+          return Promise.all(rs.map(function (r) { return r.unregister(); }));
+        }).then(function () { return window.caches ? caches.keys() : []; })
+          .then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); })
+          .then(done, done);
+      } else done();
     });
     btn('COPY THIS REPORT', 'transparent', function () {
       var t = document.getElementById('rp-diag').textContent;
