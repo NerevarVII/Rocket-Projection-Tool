@@ -72,7 +72,10 @@ export function windAtHeight(profile, z, alpha) {
   for (let i = 0; i < p.length - 1; i++) {
     const a = p[i], b = p[i + 1];
     if (h >= a.h && h <= b.h) {
-      const f = (h - a.h) / (b.h - a.h);
+      /* the surface-layer profile is close to logarithmic, so interpolate in
+         log height rather than straight height — between 10 m and 80 m the
+         difference is a few percent at 20 m */
+      const f = Math.log(h / a.h) / Math.log(b.h / a.h);
       const ar = a.dir * Math.PI / 180, br = b.dir * Math.PI / 180;
       const sx = Math.sin(ar) * (1 - f) + Math.sin(br) * f;
       const cy = Math.cos(ar) * (1 - f) + Math.cos(br) * f;
@@ -158,7 +161,10 @@ export function simulate(o) {
       const open = f * f;
       CdA = bodyCdA * (1 - open) + (o.chuteCdA + 0.35 * A) * open;
     }
-    const q = 0.5 * rho * CdA * rs;
+    /* the air thins about 1% per 85 m; on a 700 m flight that is 8% less drag
+       at the top, which a constant density gets wrong in the direction of a
+       low apogee */
+    const q = 0.5 * rho * Math.exp(-Math.max(0, z) / 8500) * CdA * rs;
     let ax = (F * axis[0] - q * rvx) / m, ay = (F * axis[1] - q * rvy) / m, az = (F * axis[2] - q * rvz) / m - G;
     if (onRod) {
       let adot = ax * rodAxis[0] + ay * rodAxis[1] + az * rodAxis[2];
@@ -216,7 +222,7 @@ export function simulate(o) {
       } else wv = o.windSpeed * Math.pow(Math.max(bz, 2) / 10, o.alpha);
       const rvx = bvx - wv * wEz, rvy = bvy - wv * wNz, rvz = bvz;
       const rs = Math.sqrt(rvx * rvx + rvy * rvy + rvz * rvz);
-      const q = 0.5 * rho * bCdA * rs;
+      const q = 0.5 * rho * Math.exp(-Math.max(0, bz) / 8500) * bCdA * rs;
       bvx -= q * rvx / bm * dt; bvy -= q * rvy / bm * dt; bvz -= (q * rvz / bm + G) * dt;
       bx += bvx * dt; by += bvy * dt; bz += bvz * dt; bt += dt;
     }
@@ -462,14 +468,39 @@ function boosterOpts(S) {
   };
 }
 
+/* ---------------------------------------------------------------------------
+   The wind a flight actually sees.
+
+   The reported wind is a mean over minutes; the gust is a three-second peak.
+   What carries a rocket is the wind averaged over its flight, which is close
+   to the mean, not halfway to the gust. Halfway to the gust — what this used
+   to do — put every nominal landing about a quarter too far downwind on a
+   normal 8-gusting-14 day.
+
+   The gust still matters, as spread: a big gap between mean and gust means a
+   turbulent, convective afternoon, and a 60-second average of that flow can
+   land well off the mean either way. The one-sigma scatter of a flight-long
+   average runs about a quarter of the gust excess, on top of a floor for the
+   forecast itself being off.
+   --------------------------------------------------------------------------- */
+export function windSigma(S) {
+  const w = Math.max(0.3, S.windMs), g = Math.max(S.gustMs, w);
+  const gustExcess = (g - w) / w;
+  return Math.sqrt(0.08 * 0.08 + Math.pow(0.28 * gustExcess, 2));
+}
+
+/* apply a wind draw to a sim option set; k = 1 is the mean wind */
+function setWind(o, S, k) {
+  o.windSpeed = Math.max(0, S.windMs * k);
+  if (o.profile) o.windScale = Math.max(0.2, k);
+}
+
 /* nominal flight + a dispersion cloud; returns the 90th-percentile search radius */
 export function predict(S, nCloud = 42) {
-  const gust = Math.max(S.gustMs, S.windMs);
-  const wEff = (S.windMs + gust) / 2;
+  const sig = windSigma(S);
   const o = baseOpts(S);
   o.keepTraj = true;
-  o.windSpeed = wEff;
-  if (o.profile) o.windScale = wEff / Math.max(0.3, S.windMs || wEff);
+  setWind(o, S, 1);
   o.shapeFn = makeShape(S.motor.mx / (S.motor.I / S.motor.b));
   const nom = simulate(o);
 
@@ -477,17 +508,11 @@ export function predict(S, nCloud = 42) {
   for (let i = 0; i < nCloud; i++) {
     const mc = baseOpts(S);
     mc.shapeFn = o.shapeFn;
-    mc.windSpeed = Math.max(0, S.windMs + (gust - S.windMs) * Math.random() + randn() * wEff * 0.09);
+    /* the whole column moves together: a gusty spell lifts every level, and a
+       shift in the synoptic flow turns every level */
+    setWind(mc, S, Math.max(0.25, 1 + randn() * sig));
     mc.windFrom = S.dirFrom + randn() * 12;
-    if (mc.profile) {
-      /* jitter the whole column together: gusts lift every level, and a shift in
-         the synoptic flow turns every level. */
-      /* Scale relative to the profile's own surface wind, the same reference the
-         nominal run uses. Dividing by wEff here instead left the cloud sitting
-         upwind of the nominal point whenever gust > wind. */
-      mc.windScale = Math.max(0.2, mc.windSpeed / Math.max(0.3, S.windMs || wEff));
-      mc.dirShift = randn() * 12;
-    }
+    if (mc.profile) mc.dirShift = randn() * 12;
     mc.cd = Math.max(0.15, S.cd * (1 + randn() * 0.18));
     mc.dryMass = S.massKg * (1 + randn() * 0.04);
     mc.chuteCdA = chuteCdA(S) * (1 + randn() * 0.14);
@@ -527,15 +552,14 @@ export function predict(S, nCloud = 42) {
 
 /* mean walk for a given rod tilt leaned into the wind — the recommender's cost function */
 export function meanMiss(S, tiltDeg, runs) {
-  const gust = Math.max(S.gustMs, S.windMs);
+  const sig = windSigma(S);
   let tot = 0;
   for (let i = 0; i < runs; i++) {
     const o = baseOpts(S);
     o.tiltDeg = tiltDeg;
     o.tiltAzim = S.dirFrom;
-    o.windSpeed = Math.max(0, S.windMs + (gust - S.windMs) * Math.random());
+    setWind(o, S, Math.max(0.25, 1 + randn() * sig));
     o.windFrom = S.dirFrom + randn() * 10;
-    if (o.profile) o.windScale = Math.max(0.2, o.windSpeed / Math.max(0.3, S.windMs || gust));
     tot += simulate(o).drift;
   }
   return tot / runs;
@@ -585,8 +609,7 @@ export function fitDragScale(S, ratio) {
   if (!(ratio > 0) || Math.abs(ratio - 1) < 0.02) return 1;
   const at = k => {
     const o = baseOpts(Object.assign({}, S, { cd: S.cd * k }));
-    o.windSpeed = Math.max(S.gustMs, S.windMs) / 2 + S.windMs / 2;
-    if (o.profile) o.windScale = o.windSpeed / Math.max(0.3, S.windMs || o.windSpeed);
+    setWind(o, S, 1);
     return simulate(o).drift;
   };
   const d0 = at(1);
@@ -616,7 +639,7 @@ export function fmt(v, dp) {
 }
 
 if (typeof window !== "undefined") {
-  window.RPPhysics = { G, FT, MPH, IN, OZ, airDensity, soundSpeed, machFactor, delayOf, boosterFor, logBias, fitDragScale, simulate, MOTORS, KITS, motorByName, chuteCdA, predict, offsetLatLon, compassWord, fmt };
+  window.RPPhysics = { G, FT, MPH, IN, OZ, airDensity, soundSpeed, machFactor, delayOf, boosterFor, windSigma, logBias, fitDragScale, simulate, MOTORS, KITS, motorByName, chuteCdA, predict, offsetLatLon, compassWord, fmt };
 }
 
 

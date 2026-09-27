@@ -285,18 +285,29 @@
 
               <div style="margin-top: 11px; padding-top: 11px; border-top: 1px dashed #B6A382;">
                 <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px;">
-                  <div style="font: 600 10px/1 'Saira Condensed', sans-serif; letter-spacing: .16em; color: #6B6152;">MEASURE THE REAL ROD</div>
-                  <div style="font: 600 9px/1 'Saira Condensed', sans-serif; letter-spacing: .12em; color: #96620A;">{{ inclState }}</div>
+                  <div style="font: 600 10px/1 'Saira Condensed', sans-serif; letter-spacing: .16em; color: #6B6152;">LINE UP THE REAL ROD</div>
+                  <div style="font: 600 9px/1 'Saira Condensed', sans-serif; letter-spacing: .12em; color: {{ rcStateFg }};">{{ rcState }}</div>
                 </div>
-                <div style="display: {{ showInclRead }}; border: 1px solid #B6A382; background: #F6F0E1; padding: 12px 10px; margin-bottom: 8px; text-align: center;">
-                  <div style="font: 700 42px/1 'Space Mono', monospace; color: {{ inclColour }};">{{ inclBig }}</div>
-                  <div style="font: 600 10px/1.5 'Saira Condensed', sans-serif; letter-spacing: .12em; color: #6B6152; margin-top: 6px; text-wrap: pretty;">{{ inclSub }}</div>
+                <div style="display: {{ showRc }}; border: 1px solid #221F1A; border-left: 6px solid {{ rcBar }}; background: #FFFFFF; padding: 10px 11px; margin-bottom: 8px;">
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px;">
+                    <div>
+                      <div style="font: 600 9px/1 'Saira Condensed', sans-serif; letter-spacing: .14em; color: #6B6152;">SET TO</div>
+                      <div style="font: 700 22px/1.1 'Space Mono', monospace; color: #221F1A; margin-top: 3px;">{{ rcTarget }}</div>
+                      <div style="font: 600 10px/1.3 'Saira Condensed', sans-serif; letter-spacing: .08em; color: #6B6152; margin-top: 2px;">{{ rcTargetSub }}</div>
+                    </div>
+                    <div>
+                      <div style="font: 600 9px/1 'Saira Condensed', sans-serif; letter-spacing: .14em; color: #6B6152;">PHONE ON THE ROD</div>
+                      <div style="font: 700 22px/1.1 'Space Mono', monospace; color: {{ rcBar }}; margin-top: 3px;">{{ rcPhone }}</div>
+                      <div style="font: 600 10px/1.3 'Saira Condensed', sans-serif; letter-spacing: .08em; color: #6B6152; margin-top: 2px;">{{ rcPhoneSub }}</div>
+                    </div>
+                  </div>
+                  <div style="margin-top: 9px; padding-top: 8px; border-top: 1px dashed #B6A382; font: 700 13px/1.3 'Saira Condensed', sans-serif; letter-spacing: .1em; color: {{ rcBar }}; text-wrap: pretty;">{{ rcAdvice }}</div>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 7px;">
-                  <button onClick="{{ inclTap }}" style="width: 100%; padding: 11px 4px 10px; border: 1px solid #221F1A; cursor: pointer; font-family: 'Saira Condensed', sans-serif; font-weight: 600; font-size: 10px; letter-spacing: .12em; background: #F6F0E1; color: #221F1A;">{{ inclLabel }}</button>
-                  <button onClick="{{ inclUse }}" style="display: {{ showInclUse }}; width: 100%; padding: 11px 4px 10px; border: 1px solid #221F1A; cursor: pointer; font-family: 'Saira Condensed', sans-serif; font-weight: 600; font-size: 10px; letter-spacing: .12em; background: {{ inclUseBg }}; color: {{ inclUseFg }};">{{ inclUseLabel }}</button>
+                  <button onClick="{{ rcTap }}" style="width: 100%; padding: 11px 4px 10px; border: 1px solid #221F1A; cursor: pointer; font-family: 'Saira Condensed', sans-serif; font-weight: 600; font-size: 10px; letter-spacing: .12em; background: {{ rcBtnBg }}; color: {{ rcBtnFg }};">{{ rcLabel }}</button>
+                  <button onClick="{{ rcAdopt }}" style="display: {{ showRcAdopt }}; width: 100%; padding: 11px 4px 10px; border: 1px dashed #221F1A; cursor: pointer; font-family: 'Saira Condensed', sans-serif; font-weight: 600; font-size: 10px; letter-spacing: .12em; background: #F6F0E1; color: #221F1A;">{{ rcAdoptLabel }}</button>
                 </div>
-                <div style="font: 400 11px/1.55 'Saira Condensed', sans-serif; color: #6B6152; margin-top: 8px; text-wrap: pretty;">{{ inclHint }}</div>
+                <div style="font: 400 11px/1.55 'Saira Condensed', sans-serif; color: #6B6152; margin-top: 8px; text-wrap: pretty;">{{ rcHint }}</div>
               </div>
 
               <div style="display: {{ showAim }}; flex-direction: column; gap: 9px; margin-top: 11px; padding-top: 11px; border-top: 1px dashed #B6A382;">
@@ -764,7 +775,7 @@ class Component extends DCLogic {
   state = {
     tab: 'plot', kitIdx: 0, motorName: 'C6-5',
     windMph: 8, gustMph: 14, dirFrom: 270,
-    tiltDeg: 0, tiltMode: 'custom', tiltBrg: 270, incl: null,
+    tiltDeg: 0, tiltMode: 'custom', tiltBrg: 270, rodChk: null,
     res: null, heading: 262, showWhy: false, runs: 0, profile: null,
     pad: [46.76097, -96.92830], padName: 'HOME PAD', padBusy: false, moveMode: false, padMsg: null,
     tempF: 68, elevFt: 900, pressHPa: null, rh: null, wx: 'manual', wxAt: null,
@@ -845,7 +856,7 @@ class Component extends DCLogic {
 
   /* module first; the global is the fallback when this runs from a single bundled file */
   async waitForPhysics() {
-    const BUILD = '12';  /* bump when physics.js changes */
+    const BUILD = '13';  /* bump when physics.js changes */
     if (window.RPPhysics && window.RPPhysics.KITS) return window.RPPhysics;
     try {
       const m = await import('./physics.js?v=' + BUILD);
@@ -866,102 +877,66 @@ class Component extends DCLogic {
     clearTimeout(this.pending);
     window.removeEventListener('resize', this.onResize);
     this.stopWalkFix();
-    this.stopIncline();
+    this.stopRodCheck();
     if (this.onOrient) {
       window.removeEventListener('deviceorientationabsolute', this.onOrient, true);
       window.removeEventListener('deviceorientation', this.onOrient, true);
     }
   }
 
-  /* ---------- inclinometer: measure the rod instead of guessing at it ----------
-     The accelerometer already in the phone is a better protractor than a
-     slider. Lay the back of the phone along the rod with the top toward the
-     nose and gravity, read in the device's own frame, gives the angle off
-     vertical directly. It counts down first because you cannot watch the screen
-     while the phone is up against the rod. */
-  startIncline() {
-    const cur = this.state.incl;
-    if (cur && (cur.phase === 'count' || cur.phase === 'sampling')) { this.stopIncline(); return; }
+  /* ---------- line up the rod: a live reading that never writes ----------
+     The plot tells you the angle and the direction. This shows what the phone
+     reads while it sits against the rod, next to what you are trying to hit,
+     and says which way to move. It changes nothing on its own; the one button
+     that does is separate and says so. So you can recommend, then match, and
+     the recommendation is still there when you look back. */
+  toggleRodCheck() {
+    if (this.state.rodChk) { this.stopRodCheck(); return; }
     const DME = window.DeviceMotionEvent;
-    if (!DME) {
-      this.setState({ incl: { phase: 'fail', err: 'No motion sensor here. The slider still works.' } });
-      return;
-    }
+    if (!DME) { this.setState({ rodChk: { fail: 'No motion sensor here. Use the slider and the dial.' } }); return; }
     if (typeof DME.requestPermission === 'function') {
       DME.requestPermission()
-        .then(r => r === 'granted' ? this.runIncline()
-          : this.setState({ incl: { phase: 'fail', err: 'Motion access was refused. Allow it under Settings, Apps, Safari, Motion & Orientation Access — or just use the slider.' } }))
-        .catch(() => this.setState({ incl: { phase: 'fail', err: 'Motion access was refused. Use the slider instead.' } }));
+        .then(r => r === 'granted' ? this.runRodCheck()
+          : this.setState({ rodChk: { fail: 'Motion access was refused. Allow it under Settings, Apps, Safari, Motion & Orientation Access.' } }))
+        .catch(() => this.setState({ rodChk: { fail: 'Motion access was refused.' } }));
       return;
     }
-    this.runIncline();
+    this.runRodCheck();
   }
 
-  runIncline() {
-    /* the heading gives us which way it leans; the angle alone still works without it */
+  runRodCheck() {
     if (this.state.compass !== 'live') this.startCompass(true);
-    let n = 3;
-    this.setState({ incl: { phase: 'count', count: n } });
-    clearInterval(this.inclTimer);
-    this.inclTimer = setInterval(() => {
-      n -= 1;
-      if (n > 0) { this.setState({ incl: { phase: 'count', count: n } }); return; }
-      clearInterval(this.inclTimer); this.inclTimer = null;
-      this.sampleIncline();
-    }, 1000);
-  }
-
-  sampleIncline() {
-    const tilts = [];
-    this.setState({ incl: { phase: 'sampling' } });
+    let gx = 0, gy = 0, gz = 0, have = false, last = 0;
+    this.setState({ rodChk: { tilt: null, steady: false } });
     this.onMotion = e => {
       const a = e.accelerationIncludingGravity;
       if (!a || !isFinite(a.y)) return;
-      const mag = Math.hypot(a.x || 0, a.y || 0, a.z || 0);
-      /* only keep samples that are gravity and nothing else — a knock or a
-         wobble reads far from 9.8 and would drag the average */
-      if (!(mag > 8.6 && mag < 11.0)) return;
-      /* absolute value, so it reads the same whichever end is up */
-      tilts.push(Math.acos(Math.min(1, Math.abs(a.y) / mag)) * 180 / Math.PI);
+      /* low-pass the gravity vector; the hand shake is far above 3 Hz */
+      const k = have ? 0.12 : 1;
+      gx += (a.x - gx) * k; gy += (a.y - gy) * k; gz += (a.z - gz) * k; have = true;
+      const mag = Math.hypot(gx, gy, gz) || 1;
+      const raw = Math.hypot(a.x, a.y, a.z);
+      const tilt = Math.acos(Math.min(1, Math.abs(gy) / mag)) * 180 / Math.PI;
+      const now = Date.now();
+      if (now - last < 120) return;             /* 8 Hz is plenty for a readout */
+      last = now;
+      this.setState({ rodChk: { tilt, steady: Math.abs(raw - 9.81) < 0.6 } });
     };
     window.addEventListener('devicemotion', this.onMotion, true);
-    this.inclStop = setTimeout(() => {
-      window.removeEventListener('devicemotion', this.onMotion, true);
-      this.onMotion = null;
-      if (tilts.length < 8) {
-        this.setState({ incl: { phase: 'fail', err: 'No steady reading. Hold the phone flat against the rod and keep it still for a second.' } });
-        return;
-      }
-      tilts.sort((x, y) => x - y);
-      /* middle half only: one bump cannot move the answer */
-      const lo = Math.floor(tilts.length * 0.25), hi = Math.ceil(tilts.length * 0.75);
-      const mid = tilts.slice(lo, hi);
-      const deg = mid.reduce((t, v) => t + v, 0) / mid.length;
-      this.setState({
-        incl: {
-          phase: 'done', deg,
-          grade: Math.tan(deg * Math.PI / 180) * 100,
-          brg: this.state.compass === 'live' ? Math.round(this.state.heading) : null,
-          shaky: (tilts[hi - 1] - tilts[lo]) > 2.5
-        }
-      });
-    }, 1600);
   }
 
-  stopIncline() {
-    clearInterval(this.inclTimer); this.inclTimer = null;
-    clearTimeout(this.inclStop); this.inclStop = null;
+  stopRodCheck() {
     if (this.onMotion) { window.removeEventListener('devicemotion', this.onMotion, true); this.onMotion = null; }
-    this.setState({ incl: null });
+    this.setState({ rodChk: null });
   }
 
-  useIncline() {
-    const i = this.state.incl;
-    if (!i || i.phase !== 'done') return;
-    const patch = { tiltDeg: Math.max(0, Math.min(45, Math.round(i.deg))) };
-    if (i.brg != null) patch.tiltBrg = ((i.brg % 360) + 360) % 360;
+  /* the one action that writes: make the settings match the rod as it stands */
+  adoptRod() {
+    const rc = this.state.rodChk;
+    if (!rc || rc.tilt == null) return;
+    const patch = { tiltDeg: Math.max(0, Math.min(45, Math.round(rc.tilt))), tiltMode: 'custom' };
+    if (this.state.compass === 'live') patch.tiltBrg = Math.round(this.state.heading) % 360;
     this.set(patch);
-    this.setState({ incl: Object.assign({}, i, { applied: true }) });
   }
 
   /* ---------- compass: real device heading, simulated only as a labelled fallback ---------- */
@@ -994,7 +969,12 @@ class Component extends DCLogic {
       cosAcc = cosAcc * 0.75 + Math.cos(r) * 0.25;
       const heading = (Math.atan2(sinAcc, cosAcc) * 180 / Math.PI + 360) % 360;
       /* the heading is displayed live; nothing that drives the plot is written
-         here, so looking around does not redraw the map */
+         here, so looking around does not redraw the map. Re-render at most
+         ten times a second and only when the needle actually moved. */
+      const now = Date.now();
+      if (this.state.compass === 'live' && now - (this.hdLast || 0) < 100) return;
+      if (this.state.compass === 'live' && Math.abs(((heading - this.state.heading + 540) % 360) - 180) < 0.5) return;
+      this.hdLast = now;
       this.setState({ heading, compass: 'live' });
     };
     window.addEventListener('deviceorientationabsolute', this.onOrient, true);
@@ -1727,6 +1707,7 @@ class Component extends DCLogic {
       msg += ' That is as far as the rod can legally lean and it is still a long walk. Nothing else has been ' +
         'changed — the levers left are yours: a smaller motor, a smaller canopy, or a shorter delay.';
     }
+    if (tilt > 0) msg += ' Set the rod, then tap CHECK THE ROD WITH MY PHONE under the rod card to confirm it \u2014 that check reads only, so what you set here stays set.';
     this.setState({
       recBusy: false, recMsg: msg, tiltDeg: tilt,
       tiltMode: 'custom', tiltBrg: ((Math.round(S.dirFrom) % 360) + 360) % 360
@@ -2316,36 +2297,47 @@ class Component extends DCLogic {
 
       tiltVal: st.tiltDeg,
       ...(() => {
-        const ic = st.incl || { phase: 'idle' };
-        const live = ic.phase === 'count' || ic.phase === 'sampling';
+        const rc = st.rodChk;
+        const live = !!(rc && !rc.fail);
+        const tgt = st.tiltDeg, tgtB = Math.round(st.tiltBrg);
+        const haveCompass = st.compass === 'live';
+        const ph = live && rc.tilt != null ? rc.tilt : null;
+        const phB = haveCompass ? Math.round(st.heading) : null;
+        const dA = ph != null ? tgt - ph : null;
+        const dB = (phB != null && tgt > 0) ? ((tgtB - phB + 540) % 360) - 180 : null;
+        const okA = dA != null && Math.abs(dA) <= 2, okB = tgt === 0 || (dB != null && Math.abs(dB) <= 8);
+        const onTarget = ph != null && okA && okB;
+        let advice = '';
+        if (!live) advice = '';
+        else if (ph == null) advice = 'WAITING FOR THE SENSOR\u2026';
+        else if (!rc.steady) advice = 'HOLD IT STILL AGAINST THE ROD';
+        else {
+          const parts = [];
+          if (!okA) parts.push(dA > 0 ? 'LEAN ' + Math.round(dA) + '\u00B0 MORE' : 'STAND IT UP ' + Math.round(-dA) + '\u00B0');
+          if (tgt > 0 && phB == null) parts.push('NO COMPASS \u2014 DIRECTION UNCHECKED');
+          else if (!okB) parts.push('SWING THE LEAN ' + Math.abs(Math.round(dB)) + '\u00B0 ' + (dB > 0 ? 'RIGHT' : 'LEFT'));
+          advice = parts.length ? parts.join(' \u00B7 ') : 'ON TARGET \u2014 LEAVE IT THERE';
+        }
+        const bar = !live || ph == null ? '#B6A382' : onTarget && rc.steady ? '#2C6E58' : '#96620A';
         return {
-          inclState: ic.phase === 'done' ? (ic.applied ? 'ROD SET' : 'READY')
-            : ic.phase === 'fail' ? 'NO READING' : (live ? 'MEASURING' : ''),
-          showInclRead: (live || ic.phase === 'done') ? 'block' : 'none',
-          inclColour: ic.phase === 'sampling' ? '#BE2A2E' : '#221F1A',
-          inclBig: ic.phase === 'count' ? String(ic.count)
-            : ic.phase === 'sampling' ? 'HOLD'
-            : ic.phase === 'done' ? Math.round(ic.deg) + '\u00B0' : '',
-          inclSub: ic.phase === 'count' ? 'GET IT ON THE ROD'
-            : ic.phase === 'sampling' ? 'KEEP IT STILL'
-            : ic.phase === 'done'
-              ? Math.round(ic.grade) + '% GRADE \u00B7 ' +
-                (ic.brg != null ? 'LEANS ' + ic.brg + '\u00B0 ' + word(ic.brg) : 'NO COMPASS, ANGLE ONLY') +
-                (ic.shaky ? ' \u00B7 READING WOBBLED' : '')
-              : '',
-          inclLabel: live ? 'CANCEL'
-            : ic.phase === 'done' ? 'MEASURE AGAIN'
-            : ic.phase === 'fail' ? 'TRY AGAIN' : 'MEASURE OFF THE ROD',
-          inclTap: () => this.startIncline(),
-          showInclUse: ic.phase === 'done' ? 'block' : 'none',
-          inclUseBg: ic.applied ? navy : '#E8A33D',
-          inclUseFg: ic.applied ? cream : ink,
-          inclUseLabel: ic.applied
-            ? 'ROD SET TO ' + Math.round(ic.deg) + '\u00B0' + (ic.brg != null ? ' \u00B7 ' + ic.brg + '\u00B0' : '')
-            : 'USE THIS ANGLE',
-          inclUse: () => this.useIncline(),
-          inclHint: ic.phase === 'fail' ? ic.err
-            : 'Lay the back of the phone along the rod, top end toward the nose. Tap, then you have three seconds to get it there before it reads.'
+          rcState: rc && rc.fail ? 'NO SENSOR' : live ? 'LIVE' : '',
+          rcStateFg: live ? '#2C6E58' : '#96620A',
+          showRc: live ? 'block' : 'none',
+          rcBar: bar,
+          rcTarget: tgt === 0 ? '0\u00B0' : tgt + '\u00B0 \u00B7 ' + tgtB + '\u00B0',
+          rcTargetSub: tgt === 0 ? 'STRAIGHT UP' : 'LEANING ' + word(tgtB) + (st.tiltMode === 'wind' ? ' \u00B7 INTO THE WIND' : ''),
+          rcPhone: ph == null ? '\u2014' : Math.round(ph) + '\u00B0' + (phB != null ? ' \u00B7 ' + phB + '\u00B0' : ''),
+          rcPhoneSub: ph == null ? '' : (phB != null ? 'LEANING ' + word(phB) : 'ANGLE ONLY') + (rc.steady ? '' : ' \u00B7 MOVING'),
+          rcAdvice: advice,
+          rcTap: () => this.toggleRodCheck(),
+          rcLabel: live ? 'STOP CHECKING' : (rc && rc.fail ? 'TRY AGAIN' : 'CHECK THE ROD WITH MY PHONE'),
+          rcBtnBg: live ? '#2C6E58' : '#F6F0E1',
+          rcBtnFg: live ? cream : ink,
+          showRcAdopt: live && ph != null ? 'block' : 'none',
+          rcAdopt: () => this.adoptRod(),
+          rcAdoptLabel: 'MAKE THE SETTINGS MATCH THE ROD (' + (ph != null ? Math.round(ph) : 0) + '\u00B0' + (phB != null ? ' \u00B7 ' + phB + '\u00B0' : '') + ')',
+          rcHint: rc && rc.fail ? rc.fail
+            : 'Lay the back of the phone along the rod, top end toward the nose, and read it off. Nothing here changes the plot \u2014 it only tells you how far the rod is from what is set. The dashed button is the exception, and it says so.'
         };
       })(),
       tiltTxt: st.tiltDeg === 0 ? 'STRAIGHT UP'
